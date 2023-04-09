@@ -1,2 +1,2 @@
-from from_conf import loader_from_config
-from utils.plot_image import *
+from data.from_conf import loaders_from_config
+from data.utils.plot_image import *

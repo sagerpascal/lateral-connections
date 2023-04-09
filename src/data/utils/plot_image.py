@@ -6,41 +6,6 @@ import torch
 import torchvision.transforms as T
 
 
-def plot_images(images: List[Any], labels: Optional[List[Any]] = None):
-    """
-    Plot images.
-    :param images: A list of images.
-    :param labels: A list of labels.
-    """
-    if not isinstance(images, list):
-        images = [images]
-    if labels is not None and not isinstance(labels, list):
-        labels = [labels]
-
-    cols = 5
-    rows = len(images) // cols + 1
-    fig, axes = plt.subplots(rows, cols, figsize=(cols * 2, rows * 2))
-    transform = T.ToPILImage()
-
-    for i, (img, lbl) in enumerate(zip(images, labels)):
-        ax = axes[i // cols, i % cols]
-        if isinstance(img, torch.Tensor):
-            img = transform(img)
-        if isinstance(img, PIL.Image):
-            img = np.array(img)
-
-        if img.shape[-1] == 1:
-            ax.imshow(img, cmap='binary')
-        else:
-            ax.imshow(img)
-        if lbl is not None:
-            ax.title(lbl)
-        ax.set(xticklabels=[], yticklabels=[], xticks=[], yticks=[])
-
-        plt.show()
-        plt.tight_layout()
-
-
 def undo_norm(img: torch.Tensor, mean: torch.Tensor, std: torch.Tensor):
     """
     Undo normalization.
@@ -48,8 +13,16 @@ def undo_norm(img: torch.Tensor, mean: torch.Tensor, std: torch.Tensor):
     :param mean: Mean.
     :param std: Standard deviation.
     """
-    assert img.shape[0] == 3 and len(img.shape) == 3, "Image must be Tensor of shape 3xMxN."
-    return img * std + mean
+    if len(img.shape) == 4:
+        assert img.shape[1] == 3 or img.shape[1] == 1, "Image must be Tensor of shape 3xMxN or 1xMxN."
+        assert img.shape[1] == mean.shape[0] and img.shape[1] == std.shape[0], "Mean and std must have same number of channels as image."
+        return img * std.view(1, -1, 1, 1) + mean.view(1, -1, 1, 1)
+    elif len(img.shape) == 3:
+        assert img.shape[0] == 3 or img.shape[0] == 1, "Image must be Tensor of shape 3xMxN or 1xMxN."
+        assert img.shape[0] == mean.shape[0] and img.shape[0] == std.shape[0], "Mean and std must have same number of channels as image."
+        return img * std.view(-1, 1, 1) + mean.view(-1, 1, 1)
+    else:
+        raise ValueError("Image must be Tensor of shape Bx3xMxN, Bx1xMxN, 3xMxN or 1xMxN..")
 
 
 def undo_norm_from_conf(img: torch.Tensor, config: Dict[str, Any]):
@@ -58,7 +31,46 @@ def undo_norm_from_conf(img: torch.Tensor, config: Dict[str, Any]):
     :param img: Image.
     :param config: Configuration.
     """
-    return undo_norm(img, config['dataset']['mean'], config['dataset']['std'])
+    return undo_norm(img, torch.Tensor([config['dataset']['mean']]), torch.Tensor(config['dataset']['std']))
+
+
+def plot_images(images: List[Any], labels: Optional[List[Any]] = None):
+    """
+    Plot images.
+    :param images: A list of images.
+    :param labels: A list of labels.
+    """
+    if isinstance(images, torch.Tensor) and len(images.shape) == 4:
+        images = [images[i, ...] for i in range(images.shape[0])]
+    if isinstance(labels, torch.Tensor) and labels.shape[0] > 1:
+        labels = [labels[i] for i in range(labels.shape[0])]
+    if not isinstance(images, list):
+        images = [images]
+    if labels is not None and not isinstance(labels, list):
+        labels = [labels]
+
+    cols = min(5, len(images))
+    rows = len(images) // cols + 1
+    fig, axes = plt.subplots(rows, cols, figsize=(cols * 2, rows * 2))
+    transform = T.ToPILImage()
+
+    for i, (img, lbl) in enumerate(zip(images, labels)):
+        ax = axes[i // cols, i % cols] if cols > 1 and rows > 1 else axes[i % cols] if cols > 1 else axes
+        if isinstance(img, torch.Tensor):
+            img = transform(img)
+        if isinstance(img, PIL.Image.Image):
+            img = np.array(img)
+
+        if img.shape[-1] == 1:
+            ax.imshow(img, cmap='binary')
+        else:
+            ax.imshow(img)
+        if lbl is not None:
+            ax.set_title(str(lbl.item()))
+        ax.set(xticklabels=[], yticklabels=[], xticks=[], yticks=[])
+
+    plt.show()
+    plt.tight_layout()
 
 
 def show_grid(img_grid: Union[torch.Tensor, List[torch.Tensor]]):

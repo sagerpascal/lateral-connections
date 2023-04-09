@@ -1,1 +1,1 @@
-from plot_image import *
+from data.utils.plot_image import *

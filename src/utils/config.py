@@ -3,10 +3,11 @@ from yaml.loader import SafeLoader
 from pathlib import Path
 from typing import Dict, Any, Union
 import os
+from utils.custom_print import print_info_config
 
 _path_t = Union[str, os.PathLike, Path]
 
-CONFIGS_DIR = Path("configs")
+CONFIGS_DIR = Path("../configs")
 DATA_CONFIGS_FP = CONFIGS_DIR / "data.yaml"
 
 
@@ -36,22 +37,21 @@ def add_data_config(config: Dict[str, Any]) -> Dict[str, Any]:
     if dataset_augmentation is not None and dataset_augmentation != "None":
         config["dataset"]["augmentation"] = data_config[dataset_augmentation]
 
+    print_info_config(config, "Config")
+
     return config
 
 
 def get_config(
-        base_config_fp: _path_t,
+        config_name: str,
 ) -> Dict[str, Any]:
     """
     Get the config.
-    :param base_config_fp: Path to the config file.
+    :param config_name: Name of the config.
     :return: A dictionary with the config.
     """
-    config = _load_config(base_config_fp)
+    config = _load_config(CONFIGS_DIR / f"{config_name}.yaml")
     config = add_data_config(config)
     return config
 
 
-if __name__ == "__main__":
-    config = get_config(CONFIGS_DIR / "base_config.yaml")
-    print(config)

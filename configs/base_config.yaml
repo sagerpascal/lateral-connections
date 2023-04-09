@@ -3,4 +3,4 @@ dataset:
   augmentation: augmentation_v1
   loader: ffcv
   batch_size: 128
-  num_workers: 8
+  num_workers: 0

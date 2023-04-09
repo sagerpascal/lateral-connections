@@ -42,14 +42,16 @@ def get_image_pipeline(mean: Any, std: Any, augmentations: Optional[List[Operati
     :param augmentations: Optional augmentations.
     :return: Image pipeline.
     """
-    image_pipeline = [SimpleRGBImageDecoder()]
-    if augmentations is not None:
-        image_pipeline.extend(augmentations)
-    image_pipeline.extend([
+    image_pipeline = [
+        SimpleRGBImageDecoder(),
         ToTensor(),
         ToDevice('cuda:0', non_blocking=True),
         ToTorchImage(),
         Convert(torch.float32),
+    ]
+    if augmentations is not None:
+        image_pipeline.extend(augmentations)
+    image_pipeline.extend([
         torchvision.transforms.Normalize(mean, std),
     ])
     return image_pipeline

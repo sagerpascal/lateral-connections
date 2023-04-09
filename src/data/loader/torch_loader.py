@@ -29,15 +29,14 @@ def _get_loader_safe(
     :param drop_last: Whether to drop the last mini-batch.
     :return: Data loader.
     """
-
-    def seed_worker(worker_id):
-        worker_seed = torch.initial_seed() % 2 ** 32
-        np.random.seed(worker_seed)
-        random.seed(worker_seed)
-
     if dataset is not None:
         train_gen = torch.Generator()
         train_gen.manual_seed(0)
+
+        def seed_worker(worker_id):
+            worker_seed = torch.initial_seed() % 2 ** 32
+            np.random.seed(worker_seed)
+            random.seed(worker_seed)
 
         return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers, drop_last=drop_last,
                           pin_memory=pin_memory, generator=train_gen, worker_init_fn=seed_worker, collate_fn=collate_fn)

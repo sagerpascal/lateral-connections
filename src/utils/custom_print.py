@@ -1,5 +1,6 @@
-from typing import Optional
+from typing import Optional, Any
 import pprint
+from pprint import pformat
 
 
 class Color:
@@ -16,38 +17,45 @@ class Color:
 
 
 class Symbol:
-    DATA = "📄"
+    DATA = "📂"
+    CONFIG = "📝"
 
 
-pp = pprint.PrettyPrinter(indent=4, depth=6)
-
-
-def _print(str_: str, symbol: str, color: str, title: Optional[str] = None):
+def _print(obj: Any, symbol: str, color: str, title: Optional[str] = None):
     """
     Print info text in yellow.
-    :param str_: Text to print.
+    :param obj: Text to print.
     :param symbol: Symbol to print.
     :param color: Color to print.
     :param title: Optional title.
     """
-    txt = f"{symbol}\t{color}{Color.BOLD}{title}{Color.END}{color}{str_}{Color.END}"
-    pp.pprint(txt)
+    obj_str = pformat(obj, depth=3).replace('\n', f'\n{symbol}\t')
+    txt = f"{symbol}\t{color}{Color.BOLD}{title}{Color.END}{color}{obj_str}{Color.END}"
+    print(txt)
 
 
-def _print_info(str_: str, symbol: str, title: Optional[str] = None):
+def _print_info(obj: Any, symbol: str, title: Optional[str] = None):
     """
     Print info text in yellow.
-    :param str_: Text to print.
+    :param obj: Text to print.
     :param symbol: Symbol to print.
     :param title: Optional title.
     """
-    _print(str_, symbol, Color.YELLOW, title)
+    _print(obj, symbol, Color.YELLOW, title)
 
 
-def print_info_data(str_: str, title: Optional[str] = None):
+def print_info_data(obj: Any, title: Optional[str] = None):
     """
     Print info text in yellow.
-    :param str_: Text to print.
+    :param obj: Text to print.
     :param title: Optional title.
     """
-    _print_info(str_, Symbol.DATA, title)
+    _print_info(obj, Symbol.DATA, title)
+
+def print_info_config(obj: Any, title: Optional[str] = None):
+    """
+    Print info text in yellow.
+    :param obj: Text to print.
+    :param title: Optional title.
+    """
+    _print_info(obj, Symbol.DATA, title)

@@ -1,4 +1,4 @@
-base_dir: data/
+base_dir: ../data/
 
 cifar10:
   dir: cifar10/

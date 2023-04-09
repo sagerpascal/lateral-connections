@@ -1,12 +1,10 @@
 from typing import Dict, Union, TypeVar, Optional, Tuple, Any
-from torch.utils.data import DataLoader
-from ffcv.loader import Loader
 from torchvision import transforms
 from torchvision.datasets import MNIST, CIFAR10, ImageNet
 import os
 from pathlib import Path
-from augmentation import get_transform_pipeline, get_image_augmentation
-from loader import get_torch_data_loaders, get_ffcv_data_loaders, get_ffcv_image_pipeline, get_ffcv_label_pipeline
+from data.augmentation import get_transform_pipeline, get_image_augmentation
+from data.loader import get_torch_data_loaders, get_ffcv_data_loaders, get_ffcv_image_pipeline, get_ffcv_label_pipeline
 
 T_co = TypeVar('T_co', covariant=True)
 _path_t = Union[str, os.PathLike, Path]
@@ -41,7 +39,7 @@ def _get_dataset(
     return train_set, valid_set, test_set
 
 
-def loader_from_config(config: Dict) -> Union[DataLoader[T_co], Loader[T_co]]:
+def loaders_from_config(config: Dict) -> Union[Any, Any, Any]:
     """
     Get a data loader from a config.
     :param config: Config.
@@ -50,7 +48,7 @@ def loader_from_config(config: Dict) -> Union[DataLoader[T_co], Loader[T_co]]:
     data_config = config["dataset"]
     if data_config["loader"] == "torch":
         transform = get_transform_pipeline(config)
-        train_set, valid_set, test_set = _get_dataset(data_config["name"], data_config["path"], transform)
+        train_set, valid_set, test_set = _get_dataset(data_config["name"], data_config["dir"], transform)
         return get_torch_data_loaders(
             train_set=train_set,
             valid_set=valid_set,
@@ -63,7 +61,7 @@ def loader_from_config(config: Dict) -> Union[DataLoader[T_co], Loader[T_co]]:
         augmentations = get_image_augmentation(config)
         image_pipeline = get_ffcv_image_pipeline(mean, std, augmentations)
         label_pipeline = get_ffcv_label_pipeline()
-        train_set, valid_set, test_set = _get_dataset(data_config["name"], data_config["path"])
+        train_set, valid_set, test_set = _get_dataset(data_config["name"], data_config["dir"])
         return get_ffcv_data_loaders(
             image_pipeline=image_pipeline,
             label_pipeline=label_pipeline,
