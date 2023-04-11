@@ -19,6 +19,7 @@ class Color:
 class Symbol:
     DATA = "📂"
     CONFIG = "📝"
+    WARNING = "⚠️"
 
 
 def _print(obj: Any, symbol: str, color: str, title: Optional[str] = None):
@@ -30,7 +31,7 @@ def _print(obj: Any, symbol: str, color: str, title: Optional[str] = None):
     :param title: Optional title.
     """
     obj_str = pformat(obj, depth=3).replace('\n', f'\n{symbol}\t')
-    txt = f"{symbol}\t{color}{Color.BOLD}{title}{Color.END}{color}{obj_str}{Color.END}"
+    txt = f"{symbol}\t{color}{Color.BOLD}{title if title is not None else ''}{Color.END}{color}{obj_str}{Color.END}"
     print(txt)
 
 
@@ -44,6 +45,15 @@ def _print_info(obj: Any, symbol: str, title: Optional[str] = None):
     _print(obj, symbol, Color.YELLOW, title)
 
 
+def print_warn(obj: Any, title: Optional[str] = None):
+    """
+    Print warning text in red.
+    :param obj: Text to print.
+    :param title: Optional title.
+    """
+    _print(obj, Symbol.WARNING, Color.RED, title)
+
+
 def print_info_data(obj: Any, title: Optional[str] = None):
     """
     Print info text in yellow.
@@ -51,6 +61,7 @@ def print_info_data(obj: Any, title: Optional[str] = None):
     :param title: Optional title.
     """
     _print_info(obj, Symbol.DATA, title)
+
 
 def print_info_config(obj: Any, title: Optional[str] = None):
     """
