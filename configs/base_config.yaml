@@ -14,3 +14,21 @@ optimizers:
         eps: 1e-08
         weight_decay: 0
         amsgrad: False
+
+metrics:
+  - accuracy:
+      type: Accuracy
+      meter: avg
+      params:
+        task: "multiclass"
+        average: "micro"
+        top_k: 1
+        threshold: 0.5
+  - f1:
+      type: F1Score
+      meter: avg
+      params:
+        task: "multiclass"
+        average: "micro"
+        top_k: 1
+        threshold: 0.5

@@ -132,6 +132,7 @@ dmypy.json
 .checkpoints/
 .data/
 .idea/
+.wandb/
 
 # Project specific files
 *.pt
