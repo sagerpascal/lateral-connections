@@ -12,13 +12,16 @@ def get_image_augmentation(config: Dict) -> List[Any]:
     :return: A torchvision transform object.
     """
     augmentations = config["dataset"]["augmentation"]
+    if augmentations is None or augmentations == 'None' or len(augmentations) == 0:
+        return []
+
     transforms_list = []
 
     for aug in augmentations.values():
         t = []
         for transf in aug[1]['transformations']:
-            class_ = getattr(transforms, transf.pop('transformation'))
-            t.append(class_(**transf))
+            class_ = getattr(transforms, transf['transformation'])
+            t.append(class_(**transf['params']))
         transforms_list.append(RandomApply(nn.ModuleList(t), aug[0]['probability']))
 
     return transforms_list
