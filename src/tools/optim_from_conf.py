@@ -5,29 +5,38 @@ from torch.nn import Parameter
 
 def torch_optim_from_conf(
         params: Union[List[Iterator[Parameter]] | Iterator[Parameter]],
-        config: Dict
+        optim_key: Union[List[str] | str],
+        config: Dict,
 ) -> Union[torch.optim.Optimizer | List[torch.optim.Optimizer]]:
     """
-    Create a torch optimizer from a config dict. If one optimizer is specified in the config file, one parameter object
-    is expected. If multiple optimizers are specified, a list of parameter objects is expected.
-    :param params: The parameters to optimize
+    Create a torch optimizer from a config dict. The optimizer key specifies which optimizer to use from the config
+    dict.
+    Either, a single parameter object and a single optimizer key must be provided or a list of parameter objects and
+    a list of optimizer keys with the same length.
+
+    :param params: Parameter object or list of parameter objects
+    :param optim_key: Optimizer key or list of optimizer keys
     :param config: Config dict
     :return: Optimizer
     """
     return_list = False
     if isinstance(params, list):
-        assert len(params) == len(config['optimizers']), 'Number of optimizers and parameter objects must match.'
+        assert isinstance(optim_key, list), 'If multiple parameter objects are specified, optim_key must be a list.'
+        assert len(params) == len(optim_key), 'Number of optimizer keys and parameter objects must match.'
         return_list = True
     else:
-        assert len(config['optimizers']) == 1, 'If only one optimizer is specified, only one parameter object is expected.'
+        params = [params]
+        if isinstance(optim_key, str):
+            optim_key = [optim_key]
 
     optimizers = []
-    for param, optimizer_conf in zip(params, config['optimizers'].values()):
-        class_ = getattr(torch.optim, optimizer_conf['type'])
-        optimizers.append(class_(param, **optimizer_conf['params']))
+    for param, optimizer_conf in zip(params, optim_key):
+        opt_conf = config['optimizers'][optim_key]
+        class_ = getattr(torch.optim, opt_conf['type'])
+        optimizers.append(class_(param, **opt_conf['params']))
 
     if return_list:
         return optimizers
     else:
-        assert len(optimizers) == 1, 'If only one optimizer is specified, only one optimizer object is returned.'
+        assert len(optimizers) == 1, 'If only one parameter object is specified, only one optimizer must be returned.'
         return optimizers[0]

@@ -32,3 +32,10 @@ metrics:
         average: "micro"
         top_k: 1
         threshold: 0.5
+
+logging:
+  wandb:
+    save_dir: "../wandb"
+    project: "test"
+    log_model: True
+    group: "test_group"

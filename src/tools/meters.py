@@ -3,7 +3,7 @@ from typing import Union
 import numpy as np
 import torch
 
-numeric = Union[int, float, complex, np.number, torch.tensor()]
+numeric = Union[int, float, complex, np.number, torch.Tensor]
 
 
 class AverageMeter:
