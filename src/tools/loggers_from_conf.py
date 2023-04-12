@@ -2,6 +2,7 @@ from typing import Dict, List
 from lightning.fabric.loggers import Logger
 from lightning.pytorch.loggers import WandbLogger
 
+
 def loggers_from_conf(conf: Dict) -> List[Logger]:
     """
     Create a list of loggers from a config dict.
