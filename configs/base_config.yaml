@@ -39,3 +39,4 @@ logging:
     project: "test"
     log_model: True
     group: "test_group"
+    job_type: "train"
