@@ -5,6 +5,10 @@ dataset:
   batch_size: 128
   num_workers: 0
 
+run:
+  load_model: None
+  n_epochs: 10
+
 optimizers:
   - opt1:
       type: Adam

@@ -20,19 +20,25 @@ class Symbol:
     DATA = "📂"
     CONFIG = "📝"
     WARNING = "⚠️"
+    EXCEPTION = "🚨"
 
 
-def _print(obj: Any, symbol: str, color: str, title: Optional[str] = None):
+def _print(obj: Any, symbol: str, color: str, title: Optional[str] = None, symbol_border: bool = False):
     """
     Print info text in yellow.
     :param obj: Text to print.
     :param symbol: Symbol to print.
     :param color: Color to print.
     :param title: Optional title.
+    :param symbol_border: If True, print symbol border.
     """
     obj_str = pformat(obj, depth=3).replace('\n', f'\n{symbol}\t')
     txt = f"{symbol}\t{color}{Color.BOLD}{title if title is not None else ''}{Color.END}{color}{obj_str}{Color.END}"
-    print(txt)
+    if symbol_border:
+        symbol_border = symbol * 40
+        print(f"{symbol_border}\n{txt}\n{symbol_border}")
+    else:
+        print(txt)
 
 
 def _print_info(obj: Any, symbol: str, title: Optional[str] = None):
@@ -43,6 +49,15 @@ def _print_info(obj: Any, symbol: str, title: Optional[str] = None):
     :param title: Optional title.
     """
     _print(obj, symbol, Color.YELLOW, title)
+
+
+def print_exception(obj: Exception):
+    """
+    Print warning text in red.
+    :param obj: Text to print.
+    :param title: Optional title.
+    """
+    _print(obj, Symbol.WARNING, Color.RED, "EXCEPTION:\n", symbol_border=True)
 
 
 def print_warn(obj: Any, title: Optional[str] = None):

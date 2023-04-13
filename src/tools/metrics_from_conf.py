@@ -2,13 +2,14 @@ from typing import Dict, Union
 import torchmetrics
 from tools import AverageMeter
 
-
 CLASSIFICATION_METRICS = ['Accuracy', 'AUROC', 'AveragePrecision', 'F1Score', 'Precision', 'Recall', 'Dice']
+
 
 class AverageMetricWrapper:
     """
     Wrapper for torchmetrics to compute the average value.
     """
+
     def __init__(self, metric):
         """
         Constructor
@@ -22,7 +23,7 @@ class AverageMetricWrapper:
         Call the metric and add the result to the average meter
         """
         result = self.metric(*args, **kwargs)
-        self.avg_meter.add(result)
+        self.avg_meter.add(result, weight=result.shape[0])
         return result
 
     def reset(self):
@@ -62,6 +63,10 @@ def _classification_metrics_from_conf(
             if 'meter' in metric_conf:
                 if metric_conf['meter'] == 'avg':
                     metric = AverageMetricWrapper(m_name)
+                else:
+                    raise NotImplementedError(f"Meter {metric_conf['meter']} not implemented.")
+            else:
+                raise NotImplementedError(f"Meter must be defined for config")
             result[m_name] = metric
 
     return result

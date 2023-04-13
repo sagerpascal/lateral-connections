@@ -1,6 +1,6 @@
 # Lateral Connections
 
-## Setup without GPU (slow)
+## Setup with/without GPU (slow)
 Create conda environment
 
 ```bash
