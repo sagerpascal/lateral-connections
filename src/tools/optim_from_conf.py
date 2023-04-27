@@ -31,7 +31,7 @@ def torch_optim_from_conf(
 
     optimizers = []
     for param, optimizer_conf in zip(params, optim_key):
-        opt_conf = config['optimizers'][optim_key]
+        opt_conf = config['optimizers'][optimizer_conf]
         class_ = getattr(torch.optim, opt_conf['type'])
         optimizers.append(class_(param, **opt_conf['params']))
 

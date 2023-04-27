@@ -81,6 +81,8 @@ def _add_cli_args(config: Dict[str, Any], cli_args: Namespace) -> Dict[str, Any]
         except Exception as e:
             print_exception(e)
             print_warn(f"Could not set {key} to {value} in config.")
+        if "cli_args" not in config:
+            config["cli_args"] = {}
         config["cli_args"][key] = value
     return config
 

@@ -1,9 +1,8 @@
 pyyaml~=6.0
-torch~=2.0.0
-numpy~=1.24.2
-torchvision~=0.15.1
+numpy~=1.23.5
 matplotlib~=3.7.1
 pillow~=9.5.0
 lightning~=2.0.1
 torchmetrics~=0.11.4
 wandb~=0.14.2
+scipy~=1.10.1

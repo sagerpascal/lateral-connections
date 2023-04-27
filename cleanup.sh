@@ -1,5 +1,5 @@
 # Create folders if they do not exist
-for FOLDER in 'plots/' 'wandb/' 'data/' 'checkpoints/'
+for FOLDER in 'plots/' 'wandb/' 'data/' 'data/beton' 'checkpoints/'
 do
   mkdir -p $FOLDER
 done

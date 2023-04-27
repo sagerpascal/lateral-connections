@@ -25,6 +25,14 @@ class AverageMeter:
         self.count = 0
         self.mean = 0
 
+    def __call__(self, value: numeric, weight: numeric = 1):
+        """
+        Add a new value to the meter
+        :param value: Value to add
+        :param weight: Weight of the value (typically the batch size)
+        """
+        self.add(value, weight)
+
     def add(self, value: numeric, weight: numeric = 1):
         """
         Add a new value to the meter

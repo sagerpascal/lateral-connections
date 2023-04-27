@@ -1,6 +1,8 @@
 from typing import Dict, Union
 import torchmetrics
 from tools import AverageMeter
+from lightning.fabric import Fabric
+import torch
 
 CLASSIFICATION_METRICS = ['Accuracy', 'AUROC', 'AveragePrecision', 'F1Score', 'Precision', 'Recall', 'Dice']
 
@@ -15,6 +17,7 @@ class AverageMetricWrapper:
         Constructor
         :param metric: Metric to wrap
         """
+        super().__init__()
         self.metric = metric
         self.avg_meter = AverageMeter()
 
@@ -22,9 +25,17 @@ class AverageMetricWrapper:
         """
         Call the metric and add the result to the average meter
         """
+        if isinstance(args[0], torch.Tensor):
+            weight = args[0].shape[0]
         result = self.metric(*args, **kwargs)
-        self.avg_meter.add(result, weight=result.shape[0])
+        self.avg_meter.add(result, weight=weight)
         return result
+
+    def add(self, *args, **kwargs):
+        """
+        Add the result to the average meter (same as __call__)
+        """
+        return self.__call__(*args, **kwargs)
 
     def reset(self):
         """
@@ -43,10 +54,12 @@ class AverageMetricWrapper:
 
 def _classification_metrics_from_conf(
         config: Dict,
+        fabric: Fabric,
 ) -> Dict[str, Union[torchmetrics.Metric | AverageMetricWrapper]]:
     """
     Create a list of torchmetrics from a config dict.
     :param config: Config dict
+    :param fabric: Fabric instance
     :return: Dict of torchmetrics with metric names as keys
     """
     result = {}
@@ -59,10 +72,10 @@ def _classification_metrics_from_conf(
             class_ = getattr(torchmetrics, metric_conf['type'])
             if 'num_classes' in class_.__new__.__code__.co_varnames:
                 metric_conf['params'] = metric_conf['params'] | {'num_classes': config['dataset']['num_classes']}
-            metric = class_(**metric_conf['params'])
+            metric = class_(**metric_conf['params']).to(fabric.device)
             if 'meter' in metric_conf:
-                if metric_conf['meter'] == 'avg':
-                    metric = AverageMetricWrapper(m_name)
+                if metric_conf['meter'] == 'avg' or metric_conf['meter'] == 'mean':
+                    metric = AverageMetricWrapper(metric)
                 else:
                     raise NotImplementedError(f"Meter {metric_conf['meter']} not implemented.")
             else:
@@ -74,10 +87,12 @@ def _classification_metrics_from_conf(
 
 def metrics_from_conf(
         config: Dict,
+        fabric: Fabric,
 ) -> Dict[str, Union[torchmetrics.Metric | AverageMetricWrapper]]:
     """
     Create a list of torchmetrics from a config dict.
     :param config: Config file
+    :param fabric: Fabric instance
     :return: Dict of torchmetrics with metric names as keys
     """
-    return _classification_metrics_from_conf(config)
+    return _classification_metrics_from_conf(config, fabric)

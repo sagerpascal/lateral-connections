@@ -1,13 +1,13 @@
 dataset:
-  name: mnist
+  name: cifar100
   augmentation: None
   loader: torch
-  batch_size: 128
+  batch_size: 64
   num_workers: 0
 
 run:
   load_model: None
-  n_epochs: 10
+  n_epochs: 20
 
 optimizers:
   opt1:
@@ -36,12 +36,28 @@ metrics:
         average: "micro"
         top_k: 1
         threshold: 0.5
+  - recall:
+      type: Recall
+      meter: avg
+      params:
+        task: "multiclass"
+        average: "micro"
+        top_k: 1
+        threshold: 0.5
+  - precision:
+      type: Precision
+      meter: avg
+      params:
+          task: "multiclass"
+          average: "micro"
+          top_k: 1
+          threshold: 0.5
 
 logging:
   wandb:
     active: False,
     save_dir: "../wandb"
-    project: "test"
+    project: "early_commitment"
     log_model: True
     group: "test_group"
     job_type: "train"

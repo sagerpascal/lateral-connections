@@ -21,9 +21,18 @@ class Symbol:
     CONFIG = "📝"
     WARNING = "⚠️"
     EXCEPTION = "🚨"
+    START = "💥"
+    LOGS = "📊"
 
 
-def _print(obj: Any, symbol: str, color: str, title: Optional[str] = None, symbol_border: bool = False):
+def _print(
+        obj: Any,
+        symbol: str,
+        color: str,
+        title: Optional[str] = None,
+        symbol_border: bool = False,
+        pretty_format: bool = True
+):
     """
     Print info text in yellow.
     :param obj: Text to print.
@@ -31,11 +40,16 @@ def _print(obj: Any, symbol: str, color: str, title: Optional[str] = None, symbo
     :param color: Color to print.
     :param title: Optional title.
     :param symbol_border: If True, print symbol border.
+    :param pretty_format: If True, use pprint.pformat to print the object.
     """
-    obj_str = pformat(obj, depth=3).replace('\n', f'\n{symbol}\t')
-    txt = f"{symbol}\t{color}{Color.BOLD}{title if title is not None else ''}{Color.END}{color}{obj_str}{Color.END}"
+    if pretty_format:
+        obj = pformat(obj, depth=3)
+    if title is not None:
+        title = f"{title}\n"
+    txt = f"{symbol}\t{color}{Color.BOLD}{title if title is not None else ''}{Color.END}{color}{obj}{Color.END}"
+    txt = txt.replace('\n', f'\n{symbol}\t')
     if symbol_border:
-        symbol_border = symbol * 40
+        symbol_border = symbol * 50
         print(f"{symbol_border}\n{txt}\n{symbol_border}")
     else:
         print(txt)
@@ -50,6 +64,27 @@ def _print_info(obj: Any, symbol: str, title: Optional[str] = None):
     """
     _print(obj, symbol, Color.YELLOW, title)
 
+
+def print_start(obj: Any, title: Optional[str] = None):
+    """
+    Print info text in yellow.
+    :param obj: Text to print.
+    :param title: Optional title.
+    """
+    _print(obj, Symbol.START, Color.BLUE, title, symbol_border=True)
+
+def print_logs(logs: Any, title: Optional[str] = None):
+    """
+    Print info text in yellow.
+    :param logs: Text to print.
+    :param title: Optional title.
+    """
+    res = ""
+    for k, v in logs.items():
+        if isinstance(v, float):
+            v = f"{v:.4f}"
+        res += f"\t{k}:\t{v}\n"
+    _print(res, Symbol.LOGS, Color.BLUE, title, pretty_format=False)
 
 def print_exception(obj: Exception):
     """

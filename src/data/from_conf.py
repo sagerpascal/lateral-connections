@@ -1,6 +1,6 @@
 from typing import Dict, Union, TypeVar, Optional, Tuple, Any
 from torchvision import transforms
-from torchvision.datasets import MNIST, CIFAR10, ImageNet
+from torchvision.datasets import MNIST, CIFAR10, CIFAR100, ImageNet
 import os
 from pathlib import Path
 from data.augmentation import get_transform_pipeline, get_image_augmentation
@@ -29,6 +29,10 @@ def _get_dataset(
         train_set = CIFAR10(root=dataset_path, train=True, download=True, transform=transform)
         valid_set = None
         test_set = CIFAR10(root=dataset_path, train=False, download=True, transform=transform)
+    elif dataset_name == "cifar100":
+        train_set = CIFAR100(root=dataset_path, train=True, download=True, transform=transform)
+        valid_set = None
+        test_set = CIFAR100(root=dataset_path, train=False, download=True, transform=transform)
     elif dataset_name == "imagenet":
         train_set = ImageNet(root=dataset_path, split="train", download=True, transform=transform)
         valid_set = ImageNet(root=dataset_path, split="val", download=True, transform=transform)
@@ -56,7 +60,7 @@ def loaders_from_config(config: Dict) -> Union[Any, Any, Any]:
             batch_size=data_config["batch_size"],
             num_workers=data_config["num_workers"],
         )
-    elif config["loader"] == "ffcv":
+    elif data_config["loader"] == "ffcv":
         mean, std = config["dataset"]["mean"], config["dataset"]["std"]
         augmentations = get_image_augmentation(config)
         image_pipeline = get_ffcv_image_pipeline(mean, std, augmentations)
@@ -68,9 +72,9 @@ def loaders_from_config(config: Dict) -> Union[Any, Any, Any]:
             train_dataset=train_set,
             valid_dataset=valid_set,
             test_dataset=test_set,
-            beton_train_filepath=data_config["beton_train_filepath"],
-            beton_valid_filepath=data_config["beton_valid_filepath"],
-            beton_test_filepath=data_config["beton_test_filepath"],
+            beton_train_filepath=data_config["beton_dir"] / "train.beton",
+            beton_valid_filepath=data_config["beton_dir"] / "valid.beton",
+            beton_test_filepath=data_config["beton_dir"] / "test.beton",
             batch_size=data_config["batch_size"],
             num_workers=data_config["num_workers"],
         )
