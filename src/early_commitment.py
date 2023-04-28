@@ -241,6 +241,11 @@ def train():
 
 
 def analyze_activations(fabric: Fabric):
+    """
+    Analyze the activations of the model (to identify early commitment).
+    :param fabric: Fabric instance.
+
+    """
     print_start("Starting analysis in script 'early_commitment.py'...", title="Analysing Early Commitment")
     kmeans = KMeans(n_clusters=300, mode='euclidean', verbose=1)
     mi_scores = {}
