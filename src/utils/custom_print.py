@@ -83,7 +83,7 @@ def print_logs(logs: Any, title: Optional[str] = None):
     for k, v in logs.items():
         if isinstance(v, float):
             v = f"{v:.4f}"
-        res += f"\t{k}:\t{v}\n"
+        res += f"\t{k:15s}:\t{v}\n"
     _print(res, Symbol.LOGS, Color.BLUE, title, pretty_format=False)
 
 def print_exception(obj: Exception):

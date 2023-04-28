@@ -134,6 +134,7 @@ dmypy.json
 .idea/
 .wandb/
 .plots/
+.tmp/
 
 # Project specific files
 *.pt

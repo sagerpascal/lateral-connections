@@ -3,6 +3,7 @@
 Script to investigate early commitment of models.
 
 """
+import matplotlib.pyplot as plt
 import torchvision
 from torch.utils.data import DataLoader
 
@@ -13,13 +14,20 @@ import lightning.pytorch as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import wandb
+import pickle
 from tqdm import tqdm
 from tools import torch_optim_from_conf, loggers_from_conf
 import argparse
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Callable
 from models.lightning_modules.lightning_base import BaseLitModule
-from torchvision.datasets.vision import VisionDataset
+from models.classification import BlockCallbackResNet18
+from tools.callbacks import LogTensorsCallback
+from pathlib import Path
+from fast_pytorch_kmeans import KMeans
+from sklearn.metrics import normalized_mutual_info_score
+import numpy as np
+
+PICKLE_FP = Path("../tmp/early_commitment.pickle")
 
 
 def parse_args(parser: Optional[argparse.ArgumentParser] = None):
@@ -79,12 +87,13 @@ class EarlyCommitmentModule(BaseLitModule):
         super().__init__(conf, fabric, logging_prefixes=["train", "val"])
         self.model = self.configure_model()
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor, y: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
         Forward pass through the model.
         :param x: Input tensor.
+        :param y: Optional labels (needed for logging during validation).
         """
-        return self.model(x)
+        return self.model(x, y)
 
     def training_step(self, batch: torch.Tensor, batch_idx: int) -> torch.Tensor:
         """
@@ -107,7 +116,7 @@ class EarlyCommitmentModule(BaseLitModule):
         :return: Loss of the validation step.
         """
         x, y = batch
-        y_hat = self.forward(x)
+        y_hat = self.forward(x, y)
         loss = F.cross_entropy(y_hat, y)
         self.log_step(loss, y_hat, y, prefix="val")
         return loss
@@ -117,10 +126,7 @@ class EarlyCommitmentModule(BaseLitModule):
         Configure (create instance) the model.
         :return: A torch model.
         """
-        model = torchvision.models.resnet18(weights=None, num_classes=self.conf['dataset']['num_classes'])
-        model.conv1 = nn.Conv2d(3, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
-        model.maxpool = nn.Identity()
-        return model
+        return BlockCallbackResNet18(self.conf)
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
         """
@@ -137,7 +143,7 @@ class EarlyCommitmentModule(BaseLitModule):
 
 
 def setup_components(config: Dict[str, Optional[Any]]) -> (
-Fabric, EarlyCommitmentModule, torch.optim.Optimizer, pl.LightningDataModule):
+        Fabric, EarlyCommitmentModule, torch.optim.Optimizer, pl.LightningDataModule):
     """
     Setup components for training.
     :param config: Configuration dict
@@ -145,7 +151,8 @@ Fabric, EarlyCommitmentModule, torch.optim.Optimizer, pl.LightningDataModule):
     """
     train_loader, _, test_loader = loaders_from_config(config)
     loggers = loggers_from_conf(config)
-    fabric = Fabric(accelerator="auto", devices=1, loggers=loggers)
+    log_tensor_callback = LogTensorsCallback(PICKLE_FP)
+    fabric = Fabric(accelerator="auto", devices=1, loggers=loggers, callbacks=[log_tensor_callback])
     fabric.launch()
     fabric.seed_everything(1)
     model = EarlyCommitmentModule(config, fabric)
@@ -157,7 +164,7 @@ Fabric, EarlyCommitmentModule, torch.optim.Optimizer, pl.LightningDataModule):
     else:
         print_warn("Train and test loader not setup with fabric.", "Fabric Warning:")
 
-    return fabric, model, optimizer, train_loader, test_loader
+    return fabric, model, optimizer, train_loader, test_loader, log_tensor_callback
 
 
 def single_train_epoch(
@@ -210,9 +217,9 @@ def single_eval_epoch(
             model.validation_step(batch, i)
 
 
-def main():
+def train():
     """
-    Main function.
+    Run the model and store the models activations in the last epoch.
     """
     print_start("Starting python script 'early_commitment.py'...", title="Launching Early Commitment Analysis")
     args = parse_args()
@@ -220,13 +227,59 @@ def main():
     if not torch.cuda.is_available():
         print_warn("CUDA is not available.", title="Slow training expected.")
 
-    fabric, model, optimizer, train_dataloader, test_dataloader = setup_components(config)
+    fabric, model, optimizer, train_dataloader, test_dataloader, log_tensor_callback = setup_components(config)
 
     for epoch in range(config['run']['n_epochs']):
-        single_train_epoch(config, fabric, model, optimizer, train_dataloader, epoch)
-        single_eval_epoch(config, model, test_dataloader, epoch)
-        model.on_epoch_end()
+       single_train_epoch(config, fabric, model, optimizer, train_dataloader, epoch)
+       if epoch + 1 == config['run']['n_epochs']:
+           model.model.register_after_block_callback("tc_1", log_tensor_callback)
+       single_eval_epoch(config, model, test_dataloader, epoch)
+       model.on_epoch_end()
+    fabric.call("on_train_end")
+
+    return fabric
+
+
+def analyze_activations(fabric: Fabric):
+    print_start("Starting analysis in script 'early_commitment.py'...", title="Analysing Early Commitment")
+    kmeans = KMeans(n_clusters=300, mode='euclidean', verbose=1)
+    mi_scores = {}
+    for fp in PICKLE_FP.parent.glob("early_commitment*.pickle"):
+        layer = fp.stem.split("_")[-1]
+        with open(str(fp), 'rb') as handle:
+            activations = pickle.load(handle)
+            X, Y = [], []
+            for y, x in activations.items():
+                X = X + x
+                Y = Y + ([y] * len(x))
+            X = torch.from_numpy(np.vstack(X)).to(fabric.device)
+            Y = np.stack(Y)
+            print(X.shape, Y.shape)
+            labels = kmeans.fit_predict(X)
+            mi = normalized_mutual_info_score(labels.detach().cpu().numpy(), Y)
+            mi_scores[layer] = mi
+            print(mi)
+    print(mi_scores)
+
+    mi_scores = dict(sorted(mi_scores.items()))
+
+    x, y = [], []
+    for layer, mi in mi_scores.items():
+        x.append(layer)
+        y.append(mi)
+
+    plt.plot(x, y)
+    plt.xlabel("ResNet Block")
+    plt.ylabel("Mutual Information")
+    plt.tight_layout()
+    plt.show()
+
+    print("The plot shows a linear increase, indicating that early layers do not commit to an output class."
+          "However, the Gestalt principle of similarity suggests that the early layers should commit to a class."
+          "I the human brain, we look at some tiny features an can already decide that these fetures most likely"
+          "belong to a very limited subset of classes.")
 
 
 if __name__ == '__main__':
-    main()
+    fabric = train()
+    analyze_activations(fabric)
