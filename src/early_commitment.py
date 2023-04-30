@@ -4,11 +4,10 @@ Script to investigate early commitment of models.
 
 """
 import matplotlib.pyplot as plt
-import torchvision
 from torch.utils.data import DataLoader
 
-from utils import get_config, print_warn, print_start
-from data import loaders_from_config
+from src.utils import get_config, print_warn, print_start
+from src.data import loaders_from_config
 from lightning.fabric import Fabric
 import lightning.pytorch as pl
 import torch
@@ -16,12 +15,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 import pickle
 from tqdm import tqdm
-from tools import torch_optim_from_conf, loggers_from_conf
+from src.tools import torch_optim_from_conf, loggers_from_conf
 import argparse
-from typing import Optional, Dict, Any, Callable
-from models.lightning_modules.lightning_base import BaseLitModule
-from models.classification import BlockCallbackResNet18
-from tools.callbacks import LogTensorsCallback
+from typing import Optional, Dict, Any
+from src.models.lightning_modules.lightning_base import BaseLitModule
+from src.models.classification import BlockCallbackResNet18
+from src.tools.callbacks import LogTensorsCallback
 from pathlib import Path
 from fast_pytorch_kmeans import KMeans
 from sklearn.metrics import normalized_mutual_info_score

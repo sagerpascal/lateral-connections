@@ -1,6 +1,6 @@
 from typing import Dict, Union
 import torchmetrics
-from tools import AverageMeter
+from src.tools import AverageMeter
 from lightning.fabric import Fabric
 import torch
 

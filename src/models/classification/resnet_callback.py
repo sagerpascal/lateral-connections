@@ -3,7 +3,6 @@ ResNet Models with callbacks that are called after each block.
 """
 
 import torch
-import torchvision
 from typing import Dict, Any, Optional, Callable
 import torch.nn as nn
 from torchvision.models.resnet import ResNet, BasicBlock

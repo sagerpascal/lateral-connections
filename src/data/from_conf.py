@@ -3,8 +3,8 @@ from torchvision import transforms
 from torchvision.datasets import MNIST, CIFAR10, CIFAR100, ImageNet
 import os
 from pathlib import Path
-from data.augmentation import get_transform_pipeline, get_image_augmentation
-from data.loader import get_torch_data_loaders, get_ffcv_data_loaders, get_ffcv_image_pipeline, get_ffcv_label_pipeline
+from src.data.augmentation import get_transform_pipeline, get_image_augmentation
+from src.data.loader import get_torch_data_loaders, get_ffcv_data_loaders, get_ffcv_image_pipeline, get_ffcv_label_pipeline
 
 T_co = TypeVar('T_co', covariant=True)
 _path_t = Union[str, os.PathLike, Path]

@@ -3,7 +3,7 @@ from pathlib import Path
 import os
 from typing import Dict, Optional, Union
 
-from data import undo_norm_from_conf, plot_images, fig_to_img
+from src.data import undo_norm_from_conf, plot_images, fig_to_img
 
 _path_t = Union[str, os.PathLike, Path]
 
