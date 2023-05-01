@@ -3,28 +3,30 @@
 Script to investigate early commitment of models.
 
 """
-import matplotlib.pyplot as plt
-from torch.utils.data import DataLoader
+import argparse
+import pickle
+from pathlib import Path
+from typing import Any, Dict, Optional
 
-from src.utils import get_config, print_warn, print_start
-from src.data import loaders_from_config
-from lightning.fabric import Fabric
 import lightning.pytorch as pl
+import matplotlib.pyplot as plt
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import pickle
-from tqdm import tqdm
-from src.tools import torch_optim_from_conf, loggers_from_conf
-import argparse
-from typing import Optional, Dict, Any
-from src.models.lightning_modules.lightning_base import BaseLitModule
-from src.models.classification import BlockCallbackResNet18
-from src.tools.callbacks import LogTensorsCallback
-from pathlib import Path
 from fast_pytorch_kmeans import KMeans
+from lightning.fabric import Fabric
 from sklearn.metrics import normalized_mutual_info_score
-import numpy as np
+from torch import Tensor
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+
+from src.data import loaders_from_config
+from src.models.classification import BlockCallbackResNet18
+from src.models.lightning_modules.lightning_base import BaseLitModule
+from src.tools import loggers_from_conf, torch_optim_from_conf
+from src.tools.callbacks import LogTensorsCallback
+from src.utils import get_config, print_start, print_warn
 
 PICKLE_FP = Path("../tmp/early_commitment.pickle")
 
@@ -32,14 +34,15 @@ PICKLE_FP = Path("../tmp/early_commitment.pickle")
 def parse_args(parser: Optional[argparse.ArgumentParser] = None):
     """
     Parse arguments from command line.
-    :param parser:
-    :return:
+    :param parser: Optional ArgumentParser instance.
+    :return: Parsed arguments.
     """
     if parser is None:
         parser = argparse.ArgumentParser(description="Analysis of Early Commitment")
     parser.add_argument("config",
                         type=str,
-                        help="Path to the config file"
+                        help="Path to the config file",
+
                         )
     parser.add_argument("--batch-size",
                         type=int,
@@ -86,7 +89,7 @@ class EarlyCommitmentModule(BaseLitModule):
         super().__init__(conf, fabric, logging_prefixes=["train", "val"])
         self.model = self.configure_model()
 
-    def forward(self, x: torch.Tensor, y: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, x: Tensor, y: Optional[Tensor] = None) -> Tensor:
         """
         Forward pass through the model.
         :param x: Input tensor.
@@ -94,7 +97,7 @@ class EarlyCommitmentModule(BaseLitModule):
         """
         return self.model(x, y)
 
-    def training_step(self, batch: torch.Tensor, batch_idx: int) -> torch.Tensor:
+    def training_step(self, batch: Tensor, batch_idx: int) -> Tensor:
         """
         Forward training step: Forward pass, loss computation, logging.
         :param batch: Data batch, containing input data and labels.
@@ -104,10 +107,10 @@ class EarlyCommitmentModule(BaseLitModule):
         x, y = batch
         y_hat = self.forward(x)
         loss = F.cross_entropy(y_hat, y)
-        self.log_step(loss, y_hat, y, prefix="train")
+        self.log_step(processed_values={"loss": loss}, metric_pairs=[(y_hat, y)], prefix="train")
         return loss
 
-    def validation_step(self, batch: torch.Tensor, batch_idx: int) -> torch.Tensor:
+    def validation_step(self, batch: Tensor, batch_idx: int) -> Tensor:
         """
         Forward validation step: Forward pass, loss computation, logging.
         :param batch: Data batch, containing input data and labels.
@@ -117,7 +120,7 @@ class EarlyCommitmentModule(BaseLitModule):
         x, y = batch
         y_hat = self.forward(x, y)
         loss = F.cross_entropy(y_hat, y)
-        self.log_step(loss, y_hat, y, prefix="val")
+        self.log_step(processed_values={"loss": loss}, metric_pairs=[(y_hat, y)], prefix="val")
         return loss
 
     def configure_model(self) -> nn.Module:
@@ -142,11 +145,11 @@ class EarlyCommitmentModule(BaseLitModule):
 
 
 def setup_components(config: Dict[str, Optional[Any]]) -> (
-        Fabric, EarlyCommitmentModule, torch.optim.Optimizer, pl.LightningDataModule):
+        Fabric, EarlyCommitmentModule, torch.optim.Optimizer, DataLoader, DataLoader, pl.LightningDataModule):
     """
     Setup components for training.
     :param config: Configuration dict
-    :return: Returns the Fabric, the model, the optimizer, the train dataloader and the test dataloader.
+    :return: Returns the Fabric, the model, the optimizer, the train dataloader and the test dataloader and the callback.
     """
     train_loader, _, test_loader = loaders_from_config(config)
     loggers = loggers_from_conf(config)
@@ -229,11 +232,11 @@ def train():
     fabric, model, optimizer, train_dataloader, test_dataloader, log_tensor_callback = setup_components(config)
 
     for epoch in range(config['run']['n_epochs']):
-       single_train_epoch(config, fabric, model, optimizer, train_dataloader, epoch)
-       if epoch + 1 == config['run']['n_epochs']:
-           model.model.register_after_block_callback("tc_1", log_tensor_callback)
-       single_eval_epoch(config, model, test_dataloader, epoch)
-       model.on_epoch_end()
+        single_train_epoch(config, fabric, model, optimizer, train_dataloader, epoch)
+        if epoch + 1 == config['run']['n_epochs']:
+            model.model.register_after_block_callback("tc_1", log_tensor_callback)
+        single_eval_epoch(config, model, test_dataloader, epoch)
+        model.on_epoch_end()
     fabric.call("on_train_end")
 
     return fabric
