@@ -13,6 +13,10 @@ def undo_norm(img: torch.Tensor, mean: torch.Tensor, std: torch.Tensor):
     :param mean: Mean.
     :param std: Standard deviation.
     """
+    if img.device != mean.device:
+        mean = mean.to(img.device)
+    if img.device != std.device:
+        std = std.to(img.device)
     if len(img.shape) == 4:
         assert img.shape[1] == 3 or img.shape[1] == 1, "Image must be Tensor of shape 3xMxN or 1xMxN."
         assert img.shape[1] == mean.shape[0] and img.shape[1] == std.shape[0], "Mean and std must have same number of" \
