@@ -1,0 +1,51 @@
+dataset:
+  name: mnist
+  augmentation: None
+  loader: torch
+  batch_size: 128
+  num_workers: 0
+  patch_height: 4
+  patch_width: 4
+
+run:
+  load_model: None
+  n_epochs: 10
+
+optimizers:
+  opt1:
+    type: Adam
+    params:
+      lr: 0.001
+      betas: [0.9, 0.999]
+      eps: 0.00000001
+      weight_decay: 0
+      amsgrad: False
+
+metrics:
+  - mae:
+      type: MeanAbsoluteError
+      meter: avg
+  - mape:
+      type: MeanAbsolutePercentageError
+      meter: avg
+  - mse:
+      type: MeanSquaredError
+      meter: avg
+
+logging:
+  wandb:
+    active: False,
+    save_dir: "../wandb"
+    project: "test"
+    log_model: True
+    group: "test_group"
+    job_type: "train"
+  console:
+    active: True
+
+model:
+  type: "TinyVQVAE"
+  params:
+    num_hiddens: 16
+    num_embeddings: 8
+    embedding_dim: 16

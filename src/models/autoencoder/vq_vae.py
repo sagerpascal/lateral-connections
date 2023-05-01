@@ -11,6 +11,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional, Tuple
+from torch import Tensor
 
 
 class VectorQuantizer(nn.Module):
@@ -37,7 +38,7 @@ class VectorQuantizer(nn.Module):
         self._embedding.weight.data.uniform_(-1 / self._num_embeddings, 1 / self._num_embeddings)
         self._commitment_cost = commitment_cost
 
-    def forward(self, inputs: torch.Tensor) -> (torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor):
+    def forward(self, inputs: Tensor) -> (Tensor, Tensor, Tensor, Tensor):
         """
         Quantize the input tensor.
         :param inputs: The tensor to quantize.
@@ -108,13 +109,13 @@ class VectorQuantizerEMA(nn.Module):
         self._commitment_cost = commitment_cost
 
         self.register_buffer('_ema_cluster_size', torch.zeros(num_embeddings))
-        self._ema_w = nn.Parameter(torch.Tensor(num_embeddings, self._embedding_dim))
+        self._ema_w = nn.Parameter(Tensor(num_embeddings, self._embedding_dim))
         self._ema_w.data.normal_()
 
         self._decay = decay
         self._epsilon = epsilon
 
-    def forward(self, inputs: torch.Tensor) -> (torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor):
+    def forward(self, inputs: Tensor) -> (Tensor, Tensor, Tensor, Tensor):
         """
         Quantize the input tensor.
         :param inputs: The tensor to quantize.
@@ -193,7 +194,7 @@ class Residual(nn.Module):
                       kernel_size=1, stride=1, bias=False)
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         """
         Forward pass.
         :param x: Input tensor.
@@ -220,7 +221,7 @@ class ResidualStack(nn.Module):
         self._layers = nn.ModuleList([Residual(in_channels, num_hiddens, num_residual_hiddens)
                                       for _ in range(self._num_residual_layers)])
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         """
         Forward pass.
         :param x: Input tensor.
@@ -263,7 +264,7 @@ class Encoder(nn.Module):
                                              num_residual_layers=num_residual_layers,
                                              num_residual_hiddens=num_residual_hiddens)
 
-    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+    def forward(self, inputs: Tensor) -> Tensor:
         """
         Forward pass through encoder.
         :param inputs: Input tensor.
@@ -318,7 +319,7 @@ class Decoder(nn.Module):
                                                 kernel_size=4,
                                                 stride=2, padding=1)
 
-    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+    def forward(self, inputs: Tensor) -> Tensor:
         """
         Forward pass through decoder.
         :param inputs: Input tensor.
@@ -385,18 +386,18 @@ class VQVAE(nn.Module):
                                 num_residual_hiddens,
                                 out_channels=in_channels)
 
-    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
         """
         Forward pass through the network.
         :param x: Input tensor (image).
-        :return: Loss, reconstructed image, perplexity.
+        :return: Loss, reconstructed image, perplexity, and encodings.
         """
         z = self._encoder(x)
         z = self._pre_vq_conv(z)
-        loss, quantized, perplexity, _ = self._vq_vae(z)
+        loss, quantized, perplexity, encodings = self._vq_vae(z)
         x_recon = self._decoder(quantized)
 
-        return loss, x_recon, perplexity
+        return loss, x_recon, perplexity, encodings
 
 
 class TinyVQVAE(nn.Module):
@@ -407,7 +408,6 @@ class TinyVQVAE(nn.Module):
     def __init__(self,
                  in_channels: int,
                  num_hiddens: int,
-                 num_conv_layers: int,
                  num_embeddings: int,
                  embedding_dim: int,
                  commitment_cost: float = 0.25,
@@ -417,19 +417,20 @@ class TinyVQVAE(nn.Module):
         Constructor.
         :param in_channels: Number of input channels (number of channels of the image).
         :param num_hiddens: Number of hidden channels.
-        :param num_conv_layers: Number of convolutional layers.
         :param num_embeddings: Number of embeddings (number of latent vectors).
         :param embedding_dim: Size of the embedding vectors.
         :param commitment_cost: Commitment cost factor.
         :param decay: Decay factor for the exponential moving average update of the embedding vectors.
         """
         super().__init__()
-        assert num_conv_layers > 0, "Number of convolutional layers must be greater than 0."
 
-        self._encoder = nn.ModuleList([nn.Conv2d(in_channels=in_channels, out_channels=num_hiddens, kernel_size=3,
-                                                 stride=1, padding=1)] + [
-                                          nn.Conv2d(in_channels=num_hiddens, out_channels=num_hiddens, kernel_size=3,
-                                                    stride=1, padding=1) for _ in range(num_conv_layers - 1)])
+        self._encoder = nn.Sequential(
+            nn.Conv2d(in_channels=in_channels, out_channels=num_hiddens, kernel_size=3, stride=1),
+            nn.ReLU(True),
+            nn.Conv2d(in_channels=num_hiddens, out_channels=num_hiddens, kernel_size=2, stride=1),
+            nn.ReLU(True),
+        )
+
 
         self._pre_vq_conv = nn.Conv2d(in_channels=num_hiddens,
                                       out_channels=embedding_dim,
@@ -445,21 +446,22 @@ class TinyVQVAE(nn.Module):
                                            embedding_dim,
                                            commitment_cost)
 
-        self._decoder = nn.ModuleList([nn.ConvTranspose2d(in_channels=num_hiddens, out_channels=num_hiddens,
-                                                          kernel_size=3, stride=1, padding=1)
-                                       for _ in range(num_conv_layers - 1)] + [
-                                          nn.ConvTranspose2d(in_channels=num_hiddens, out_channels=in_channels,
-                                                             kernel_size=3, stride=1, padding=1)])
+        self._decoder = nn.Sequential(
+            nn.ConvTranspose2d(in_channels=embedding_dim, out_channels=num_hiddens, kernel_size=2, stride=1),
+            nn.ReLU(True),
+            nn.ConvTranspose2d(in_channels=num_hiddens, out_channels=in_channels, kernel_size=3, stride=1),
+            nn.ReLU(True),
+        )
 
-    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
         """
         Forward pass through the network.
         :param x: Input tensor (image).
-        :return: Loss, reconstructed image, perplexity.
+        :return: Loss, reconstructed image, perplexity, and encodings.
         """
         z = self._encoder(x)
         z = self._pre_vq_conv(z)
-        loss, quantized, perplexity, _ = self._vq_vae(z)
+        loss, quantized, perplexity, encodings = self._vq_vae(z)
         x_recon = self._decoder(quantized)
 
-        return loss, x_recon, perplexity
+        return loss, x_recon, perplexity, encodings
