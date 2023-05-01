@@ -5,6 +5,8 @@ from lightning.fabric import Fabric
 import torch
 
 CLASSIFICATION_METRICS = ['Accuracy', 'AUROC', 'AveragePrecision', 'F1Score', 'Precision', 'Recall', 'Dice']
+REGRESSION_METRICS = ['MeanSquaredError', 'MeanAbsoluteError', 'MeanSquaredLogError', 'MeanAbsolutePercentageError']
+SUPPORTED_METRICS = CLASSIFICATION_METRICS + REGRESSION_METRICS
 
 
 class AverageMetricWrapper:
@@ -65,12 +67,14 @@ def _classification_metrics_from_conf(
     result = {}
     for metric in config['metrics']:
         for m_name, metric_conf in metric.items():
-            assert metric_conf['type'] in CLASSIFICATION_METRICS, f'Unknown metric type {metric_conf["type"]} check ' \
-                                                                  f'(https://torchmetrics.readthedocs.io/en/latest/, ' \
-                                                                  f'the metric may be available but not yet implemented ' \
-                                                                  f'here)'
+            assert metric_conf['type'] in SUPPORTED_METRICS, f'Unknown metric type {metric_conf["type"]} check ' \
+                                                             f'(https://torchmetrics.readthedocs.io/en/latest/, ' \
+                                                             f'the metric may be available but not yet implemented ' \
+                                                             f'here)'
             class_ = getattr(torchmetrics, metric_conf['type'])
-            if 'num_classes' in class_.__new__.__code__.co_varnames:
+            if 'params' not in metric_conf:
+                metric_conf['params'] = {}
+            if metric_conf['type'] in CLASSIFICATION_METRICS and 'num_classes' in class_.__new__.__code__.co_varnames:
                 metric_conf['params'] = metric_conf['params'] | {'num_classes': config['dataset']['num_classes']}
             metric = class_(**metric_conf['params']).to(fabric.device)
             if 'meter' in metric_conf:
