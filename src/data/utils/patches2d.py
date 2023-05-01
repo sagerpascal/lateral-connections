@@ -65,18 +65,26 @@ class Patches2D:
         :return: Patches tensor (BxNPxCxPHxPW) where NP is nuber of patches, PH patch height and PW patch width.
         """
         if self.padding_height > 0 or self.padding_width > 0:
-            image = F.pad(
-                image,
-                pad=(self.padding_width // 2, self.padding_width // 2, self.padding_height // 2, self.padding_height // 2),
-                mode=self.padding_mode,
-                value=self.padding_value
-            )
+            image =self.pad_image(image)
         n_channels = image.shape[1]
         return image \
             .unfold(2, self.patch_height, self.patch_height) \
             .unfold(3, self.patch_width, self.patch_width) \
             .permute(0, 2, 3, 1, 4, 5) \
             .reshape(image.shape[0], -1, n_channels, self.patch_height, self.patch_width)
+
+    def pad_image(self, image: torch.Tensor) -> torch.Tensor:
+        """
+        Pad image.
+        :param image: Image tensor.
+        :return: Padded image tensor.
+        """
+        return F.pad(
+            image,
+            pad=(self.padding_width // 2, self.padding_width // 2, self.padding_height // 2, self.padding_height // 2),
+            mode=self.padding_mode,
+            value=self.padding_value
+        )
 
     def _get_n_patches_per_side(self) -> Tuple[int, int]:
         """
