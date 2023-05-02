@@ -73,8 +73,11 @@ class VectorQuantizer(nn.Module):
         avg_probs = torch.mean(encodings, dim=0)
         perplexity = torch.exp(-torch.sum(avg_probs * torch.log(avg_probs + 1e-10)))
 
+        # change view of encodings
+        encodings_v = encodings.view(input_shape[:-1] + (self._num_embeddings,))
+
         # convert quantized from BHWC -> BCHW
-        return loss, quantized.permute(0, 3, 1, 2).contiguous(), perplexity, encodings
+        return loss, quantized.permute(0, 3, 1, 2).contiguous(), perplexity, encodings_v
 
 
 class VectorQuantizerEMA(nn.Module):
@@ -166,8 +169,11 @@ class VectorQuantizerEMA(nn.Module):
         avg_probs = torch.mean(encodings, dim=0)
         perplexity = torch.exp(-torch.sum(avg_probs * torch.log(avg_probs + 1e-10)))
 
+        # change view of encodings
+        encodings_v = encodings.view(input_shape[:-1] + (self._num_embeddings,))
+
         # convert quantized from BHWC -> BCHW
-        return loss, quantized.permute(0, 3, 1, 2).contiguous(), perplexity, encodings
+        return loss, quantized.permute(0, 3, 1, 2).contiguous(), perplexity, encodings_v
 
 
 class Residual(nn.Module):
@@ -425,9 +431,9 @@ class TinyVQVAE(nn.Module):
         super().__init__()
 
         self._encoder = nn.Sequential(
-            nn.Conv2d(in_channels=in_channels, out_channels=num_hiddens, kernel_size=3, stride=1),
+            nn.Conv2d(in_channels=in_channels, out_channels=num_hiddens, kernel_size=3, stride=1, padding=1),
             nn.ReLU(True),
-            nn.Conv2d(in_channels=num_hiddens, out_channels=num_hiddens, kernel_size=2, stride=1),
+            nn.Conv2d(in_channels=num_hiddens, out_channels=num_hiddens, kernel_size=3, stride=1, padding=1),
             nn.ReLU(True),
         )
 
@@ -447,9 +453,9 @@ class TinyVQVAE(nn.Module):
                                            commitment_cost)
 
         self._decoder = nn.Sequential(
-            nn.ConvTranspose2d(in_channels=embedding_dim, out_channels=num_hiddens, kernel_size=2, stride=1),
+            nn.ConvTranspose2d(in_channels=embedding_dim, out_channels=num_hiddens, kernel_size=3, stride=1, padding=1),
             nn.ReLU(True),
-            nn.ConvTranspose2d(in_channels=num_hiddens, out_channels=in_channels, kernel_size=3, stride=1),
+            nn.ConvTranspose2d(in_channels=num_hiddens, out_channels=in_channels, kernel_size=3, stride=1, padding=1),
             nn.ReLU(True),
         )
 
