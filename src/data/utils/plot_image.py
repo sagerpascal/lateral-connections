@@ -42,28 +42,41 @@ def undo_norm_from_conf(img: torch.Tensor, config: Dict[str, Any]):
 
 def plot_images(
         images: List[Any],
+        masks: Optional[List[Any]],
         titles: Optional[List[Any]] = None,
         show_plot: bool = True,
-        fig_fp: Optional[str] = None
+        fig_fp: Optional[str] = None,
+        max_cols: Optional[int] = 5,
 ) -> plt.Figure:
     """
     Plot images.
     :param images: A list of images.
+    :param masks: A list of masks that are overlaid on the images.
     :param titles: A list of titles or labels.
     :param show_plot: Show plot.
     :param fig_fp: File path to save figure.
+    :param max_cols: Maximum number of columns.
     :return: matplotlib Figure.
     """
     if isinstance(images, torch.Tensor) and len(images.shape) == 4:
         images = [images[i, ...] for i in range(images.shape[0])]
-    if isinstance(titles, torch.Tensor) and titles.shape[0] > 1:
-        titles = [titles[i] for i in range(titles.shape[0])]
     if not isinstance(images, list):
         images = [images]
-    if titles is not None and not isinstance(titles, list):
-        titles = [titles]
 
-    cols = min(5, len(images))
+    if masks is not None:
+        if isinstance(masks, torch.Tensor) and len(masks.shape) == 4:
+            masks = [masks[i, ...] for i in range(masks.shape[0])]
+        if not isinstance(masks, list):
+            masks = [masks]
+        assert len(images) == len(masks), "Number of images and masks must be equal."
+
+    if titles is not None:
+        if isinstance(titles, torch.Tensor) and titles.shape[0] > 1:
+            titles = [titles[i] for i in range(titles.shape[0])]
+        if not isinstance(titles, list):
+            titles = [titles]
+
+    cols = min(max_cols, len(images))
     rows = len(images) // cols + 1
     fig, axes = plt.subplots(rows, cols, figsize=(cols * 2, rows * 2))
     transform = T.ToPILImage()
@@ -75,12 +88,24 @@ def plot_images(
         if isinstance(img, Image):
             img = np.array(img)
 
+        if masks is not None:
+            mask = masks[i]
+            if isinstance(mask, torch.Tensor):
+                mask = transform(mask)
+            if isinstance(mask, Image):
+                mask = np.array(mask)
+
         if img.shape[-1] == 1:
             ax.imshow(img, cmap='binary')
         else:
             ax.imshow(img)
+
+        if mask is not None:
+            ax.imshow(mask, alpha=0.6, cmap='jet', interpolation='none')
+
         if lbl is not None:
-            ax.set_title(str(lbl.item()))
+            lbl = str(lbl.item()) if isinstance(lbl, torch.Tensor) else lbl
+            ax.set_title(lbl)
         ax.set(xticklabels=[], yticklabels=[], xticks=[], yticks=[])
 
     if fig_fp is not None:
