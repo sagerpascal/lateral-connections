@@ -263,7 +263,7 @@ def train_feature_extractor(
         if scheduler is not None:
             scheduler.step(logs["val/loss"])
         fabric.call("on_epoch_end", config=config, logs=logs, fabric=fabric,
-                    components={"model": model, "optimizer": optimizer, "scheduler": scheduler})
+                    components={"model": model, "optimizer": optimizer, "scheduler": scheduler.state_dict()})
     fabric.call("on_train_end")
 
 

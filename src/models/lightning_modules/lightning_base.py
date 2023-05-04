@@ -79,7 +79,7 @@ class BaseLitModule(pl.LightningModule):
         """
         for prefix in self.logging_prefixes:
             wandb.define_metric(f'{prefix}/loss', summary='min')
-            for m_name, in self.metrics.keys():
+            for m_name in self.metrics.keys():
                 wandb.define_metric(f'{prefix}/{m_name}', summary='max')
 
     def log_(self) -> Dict[str, float]:
@@ -89,10 +89,16 @@ class BaseLitModule(pl.LightningModule):
         """
         logs = {'epoch': self.current_epoch_}
         for m_name, m in self.avg_meters.items():
-            logs[m_name] = m.mean
+            val = m.mean
+            if isinstance(val, torch.Tensor):
+                val = val.item()
+            logs[m_name] = val
             m.reset()
         for m_name, m in self.metrics.items():
-            logs[m_name] = m.mean
+            val = m.mean
+            if isinstance(val, torch.Tensor):
+                val = val.item()
+            logs[m_name] = val
             m.reset()
         self.log_dict(logs)
         return logs

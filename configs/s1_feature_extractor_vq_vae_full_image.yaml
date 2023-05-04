@@ -10,9 +10,9 @@ dataset:
 run:
   load_model: None
   mode: full_image
-  n_epochs: 30
+  n_epochs: 100
   current_epoch: 0
-  store_state_path: checkpoints/s1/vq_vae_full_image
+  store_state_path: ../checkpoints/s1/vq_vae_full_image
   load_state_path: None
   visualize_plots: False
 
@@ -52,9 +52,9 @@ logging:
   wandb:
     active: False,
     save_dir: "../wandb"
-    project: "vq_vae_full_image"
+    project: "s1_feature_extractor"
     log_model: True
-    group: "test_group"
+    group: "full_image"
     job_type: "train"
   console:
     active: True

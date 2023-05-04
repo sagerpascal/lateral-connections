@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Literal
 
 import wandb
@@ -41,4 +42,4 @@ class SaveBestModelCallback:
 
             path = save_run(config, fabric, components)
             if config['logging']['wandb']['active']:
-                wandb.save(path)
+                wandb.save(path, base_path=str(Path(path).parent.absolute()), policy="now")

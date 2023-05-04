@@ -12,7 +12,7 @@ run:
   mode: patches
   n_epochs: 30
   current_epoch: 0
-  store_state_path: heckpoints/s1/vq_vae_patches
+  store_state_path: ../checkpoints/s1/vq_vae_patches
   load_state_path: None
   visualize_plots: False
 
@@ -52,9 +52,9 @@ logging:
   wandb:
     active: False,
     save_dir: "../wandb"
-    project: "vq_vae_patches"
+    project: "s1_feature_extractor"
     log_model: True
-    group: "test_group"
+    group: "patches"
     job_type: "train"
   console:
     active: True
