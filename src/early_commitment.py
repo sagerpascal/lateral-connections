@@ -6,7 +6,7 @@ Script to investigate early commitment of models.
 import argparse
 import pickle
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import lightning.pytorch as pl
 import matplotlib.pyplot as plt
@@ -18,6 +18,8 @@ from fast_pytorch_kmeans import KMeans
 from lightning.fabric import Fabric
 from sklearn.metrics import normalized_mutual_info_score
 from torch import Tensor
+from torch.optim import Optimizer
+from torch.optim.lr_scheduler import LRScheduler
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -130,7 +132,7 @@ class EarlyCommitmentModule(BaseLitModule):
         """
         return BlockCallbackResNet18(self.conf)
 
-    def configure_optimizers(self) -> torch.optim.Optimizer:
+    def configure_optimizers(self) -> Tuple[Optimizer, Optional[LRScheduler]]:
         """
         Configure (create instance) the optimizer.
         :return: A torch optimizer.
@@ -145,11 +147,11 @@ class EarlyCommitmentModule(BaseLitModule):
 
 
 def setup_components(config: Dict[str, Optional[Any]]) -> (
-        Fabric, EarlyCommitmentModule, torch.optim.Optimizer, DataLoader, DataLoader, pl.LightningDataModule):
+        Fabric, EarlyCommitmentModule, Optimizer, LRScheduler, DataLoader, DataLoader, pl.LightningDataModule):
     """
     Setup components for training.
     :param config: Configuration dict
-    :return: Returns the Fabric, the model, the optimizer, the train dataloader and the test dataloader and the
+    :return: Returns the Fabric, the model, the optimizer, the lr scheduler, the train dataloader and the test dataloader and the
     callback.
     """
     train_loader, _, test_loader = loaders_from_config(config)
@@ -159,7 +161,7 @@ def setup_components(config: Dict[str, Optional[Any]]) -> (
     fabric.launch()
     fabric.seed_everything(1)
     model = EarlyCommitmentModule(config, fabric)
-    optimizer = model.configure_optimizers()
+    optimizer, scheduler = model.configure_optimizers()
     model, optimizer = fabric.setup(model, optimizer)
     if isinstance(train_loader, DataLoader):
         train_loader = fabric.setup_dataloaders(train_loader)
@@ -167,14 +169,14 @@ def setup_components(config: Dict[str, Optional[Any]]) -> (
     else:
         print_warn("Train and test loader not setup with fabric.", "Fabric Warning:")
 
-    return fabric, model, optimizer, train_loader, test_loader, log_tensor_callback
+    return fabric, model, optimizer, scheduler, train_loader, test_loader, log_tensor_callback
 
 
 def single_train_epoch(
         config: Dict[str, Optional[Any]],
         fabric: Fabric,
         model: EarlyCommitmentModule,
-        optimizer: torch.optim.Optimizer,
+        optimizer: Optimizer,
         train_dataloader: DataLoader,
         epoch: int,
 ):
@@ -230,14 +232,16 @@ def train():
     if not torch.cuda.is_available():
         print_warn("CUDA is not available.", title="Slow training expected.")
 
-    fabric, model, optimizer, train_dataloader, test_dataloader, log_tensor_callback = setup_components(config)
+    fabric, model, optimizer, scheduler, train_dataloader, test_dataloader, log_tensor_callback = setup_components(config)
 
     for epoch in range(config['run']['n_epochs']):
         single_train_epoch(config, fabric, model, optimizer, train_dataloader, epoch)
         if epoch + 1 == config['run']['n_epochs']:
             model.model.register_after_block_callback("tc_1", log_tensor_callback)
         single_eval_epoch(config, model, test_dataloader, epoch)
-        model.on_epoch_end()
+        logs = model.on_epoch_end()
+        if scheduler is not None:
+            scheduler.step(logs["val/loss"])
     fabric.call("on_train_end")
 
     return fabric

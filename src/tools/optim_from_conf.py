@@ -41,6 +41,8 @@ def torch_optim_from_conf(
         if 'scheduler' in opt_conf:
             class_ = getattr(torch.optim.lr_scheduler, opt_conf['scheduler']['type'])
             schedulers.append(class_(optimizer, **opt_conf['scheduler']['params']))
+        else:
+            schedulers.append(None)
 
     if return_list:
         return optimizers, schedulers
