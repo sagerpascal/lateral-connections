@@ -80,9 +80,10 @@ class BaseLitModule(pl.LightningModule):
             for m_name, in self.metrics.keys():
                 wandb.define_metric(f'{prefix}/{m_name}', summary='max')
 
-    def log_(self):
+    def log_(self) -> Dict[str, float]:
         """
         Log the metrics.
+        :return: Dictionary of logs.
         """
         logs = {'epoch': self.current_epoch_}
         for m_name, m in self.avg_meters.items():
@@ -92,10 +93,13 @@ class BaseLitModule(pl.LightningModule):
             logs[m_name] = m.mean
             m.reset()
         self.log_dict(logs)
+        return logs
 
-    def on_epoch_end(self):
+    def on_epoch_end(self) -> Dict[str, float]:
         """
         Callback at the end of an epoch (log data).
+        :return: Dictionary of logs.
         """
-        self.log_()
+        logs = self.log_()
         self.current_epoch_ += 1
+        return logs
