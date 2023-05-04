@@ -1,1 +1,1 @@
-from src.models.classification.resnet_callback import BlockCallbackResNet18
+from models.classification.resnet_callback import BlockCallbackResNet18

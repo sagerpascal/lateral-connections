@@ -1,1 +1,1 @@
-from src.tools.custom_math.binary import bin2dec, dec2bin
+from tools.custom_math.binary import bin2dec, dec2bin

@@ -4,7 +4,7 @@ import torch
 import torchmetrics
 from lightning.fabric import Fabric
 
-from src.tools import AverageMeter
+from tools import AverageMeter
 
 CLASSIFICATION_METRICS = ['Accuracy', 'AUROC', 'AveragePrecision', 'F1Score', 'Precision', 'Recall', 'Dice']
 REGRESSION_METRICS = ['MeanSquaredError', 'MeanAbsoluteError', 'MeanSquaredLogError', 'MeanAbsolutePercentageError']

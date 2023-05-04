@@ -11,11 +11,11 @@ from torch.optim.lr_scheduler import LRScheduler
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from src.data import loaders_from_config
-from src.models import BaseLitModule
-from src.stage_1.feature_extractor import VQVAEFeatureExtractorImageMode, VQVAEFeatureExtractorPatchMode
-from src.tools import loggers_from_conf
-from src.utils import get_config, print_start, print_warn
+from data import loaders_from_config
+from models import BaseLitModule
+from stage_1.feature_extractor import VQVAEFeatureExtractorImageMode, VQVAEFeatureExtractorPatchMode
+from tools import loggers_from_conf
+from utils import get_config, print_start, print_warn
 from tools.callbacks.save_model import SaveBestModelCallback
 from tools.store_load_run import load_run
 

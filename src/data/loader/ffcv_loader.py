@@ -13,7 +13,7 @@ from ffcv.transforms.common import Squeeze
 from ffcv.writer import DatasetWriter
 from torch.utils.data import Dataset
 
-from src.utils import print_info_data, print_warn
+from utils import print_info_data, print_warn
 
 T_co = TypeVar('T_co', covariant=True)
 T = TypeVar('T')

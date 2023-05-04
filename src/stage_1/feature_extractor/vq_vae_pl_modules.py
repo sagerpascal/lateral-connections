@@ -15,10 +15,10 @@ from torch.optim.lr_scheduler import LRScheduler
 from data import plot_images, undo_norm_from_conf
 from data.utils.patches2d import Patches2D
 from models.autoencoder.vq_vae import SmallVQVAE
-from src.data import show_grid
-from src.models import BaseLitModule, TinyVQVAE
-from src.tools import torch_optim_from_conf
-from src.tools.custom_math import bin2dec
+from data import show_grid
+from models import BaseLitModule, TinyVQVAE
+from tools import torch_optim_from_conf
+from tools.custom_math import bin2dec
 
 
 class VQVAEFeatureExtractorPatchMode(BaseLitModule):

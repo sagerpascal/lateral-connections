@@ -23,12 +23,12 @@ from torch.optim.lr_scheduler import LRScheduler
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from src.data import loaders_from_config
-from src.models.classification import BlockCallbackResNet18
-from src.models.lightning_modules.lightning_base import BaseLitModule
-from src.tools import loggers_from_conf, torch_optim_from_conf
-from src.tools.callbacks import LogTensorsCallback
-from src.utils import get_config, print_start, print_warn
+from data import loaders_from_config
+from models.classification import BlockCallbackResNet18
+from models.lightning_modules.lightning_base import BaseLitModule
+from tools import loggers_from_conf, torch_optim_from_conf
+from tools.callbacks import LogTensorsCallback
+from utils import get_config, print_start, print_warn
 
 PICKLE_FP = Path("../tmp/early_commitment.pickle")
 

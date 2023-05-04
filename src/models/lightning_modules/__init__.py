@@ -1,1 +1,1 @@
-from src.models.lightning_modules.lightning_base import BaseLitModule
+from models.lightning_modules.lightning_base import BaseLitModule

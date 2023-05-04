@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional, Union
 
 import torch
 
-from src.data import fig_to_img, plot_images, undo_norm_from_conf
+from data import fig_to_img, plot_images, undo_norm_from_conf
 
 _path_t = Union[str, os.PathLike, Path]
 

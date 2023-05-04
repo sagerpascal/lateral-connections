@@ -5,8 +5,8 @@ from typing import Any, Dict, Optional, Tuple, TypeVar, Union
 from torchvision import transforms
 from torchvision.datasets import CIFAR10, CIFAR100, ImageNet, MNIST
 
-from src.data.augmentation import get_image_augmentation, get_transform_pipeline
-from src.data.loader import get_ffcv_data_loaders, get_ffcv_image_pipeline, get_ffcv_label_pipeline, \
+from data.augmentation import get_image_augmentation, get_transform_pipeline
+from data.loader import get_ffcv_data_loaders, get_ffcv_image_pipeline, get_ffcv_label_pipeline, \
     get_torch_data_loaders
 
 T_co = TypeVar('T_co', covariant=True)

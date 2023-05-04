@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Union
 import yaml
 from yaml.loader import SafeLoader
 
-from src.utils.custom_print import print_exception, print_info_config, print_warn
+from utils.custom_print import print_exception, print_info_config, print_warn
 
 _path_t = Union[str, os.PathLike, Path]
 
