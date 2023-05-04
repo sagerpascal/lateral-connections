@@ -9,6 +9,8 @@ import torch.nn.functional as F
 import torchvision
 from lightning.fabric import Fabric
 from torch import Tensor
+from torch.optim import Optimizer
+from torch.optim.lr_scheduler import LRScheduler
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -218,7 +220,7 @@ class VQVAEFeatureExtractorPatchMode(BaseLitModule):
             padding_value=padding_value
         )
 
-    def configure_optimizers(self) -> torch.optim.Optimizer:
+    def configure_optimizers(self) -> Tuple[Optimizer, Optional[LRScheduler]]:
         """
         Configure (create instance) the optimizer.
         :return: A torch optimizer.
@@ -351,10 +353,10 @@ class VQVAEFeatureExtractorImageMode(BaseLitModule):
         else:
             raise NotImplementedError(f"Model {model_conf['type']} not implemented")
 
-    def configure_optimizers(self) -> torch.optim.Optimizer:
+    def configure_optimizers(self) -> Tuple[Optimizer, Optional[LRScheduler]]:
         """
         Configure (create instance) the optimizer.
-        :return: A torch optimizer.
+        :return: A torch optimizer and scheduler.
         """
         return torch_optim_from_conf(self.parameters(), 'opt1', self.conf)
 
@@ -391,7 +393,7 @@ def setup_fabric(config: Dict[str, Optional[Any]]) -> Fabric:
 
 
 def setup_components(config: Dict[str, Optional[Any]], fabric: Fabric) -> (
-        VQVAEFeatureExtractorPatchMode, torch.optim.Optimizer, DataLoader, DataLoader):
+        VQVAEFeatureExtractorPatchMode, Optimizer, Optional[LRScheduler]):
     """
     Setup components for training.
     :param config: Configuration dict
@@ -399,9 +401,9 @@ def setup_components(config: Dict[str, Optional[Any]], fabric: Fabric) -> (
     :return: Returns the model and the optimizer
     """
     model = get_model(config, fabric)
-    optimizer = model.configure_optimizers()
+    optimizer, scheduler = model.configure_optimizers()
     model, optimizer = fabric.setup(model, optimizer)
-    return model, optimizer
+    return model, optimizer, scheduler
 
 
 def setup_dataloader(config: Dict[str, Optional[Any]], fabric: Fabric) -> (DataLoader, DataLoader):
@@ -425,10 +427,10 @@ def single_train_epoch(
         config: Dict[str, Optional[Any]],
         fabric: Fabric,
         model: EarlyCommitmentModule,
-        optimizer: torch.optim.Optimizer,
+        optimizer: Optimizer,
         train_dataloader: DataLoader,
         epoch: int,
-) -> Dict[str, float]:
+):
     """
     Train a single epoch.
     :param config: Configuration dict
@@ -455,7 +457,7 @@ def single_eval_epoch(
         model: EarlyCommitmentModule,
         test_dataloader: DataLoader,
         epoch: int,
-) -> Dict[str, float]:
+):
     """
     Evaluate a single epoch.
     :param config: Configuration dict
@@ -495,12 +497,13 @@ def train():
 
     # -------------------- Setup Modules -------------------- #
     fabric = setup_fabric(config)
-    model, optimizer = setup_components(config, fabric)
+    model, optimizer, scheduler = setup_components(config, fabric)
     train_dataloader, test_dataloader = setup_dataloader(config, fabric)
     if 'load_state_path' in config['run'] and config['run']['load_state_path'] != 'None':
         config, components = load_run(config, fabric)
         model.load_state_dict(components['model'])
         optimizer.load_state_dict(components['optimizer'])
+        scheduler.load_state_dict(components['scheduler'])
 
     # -------------------- Run Training -------------------- #
     start_epoch = config['run']['current_epoch']
@@ -509,8 +512,10 @@ def train():
         single_train_epoch(config, fabric, model, optimizer, train_dataloader, epoch)
         single_eval_epoch(config, model, test_dataloader, epoch)
         logs = model.on_epoch_end()
+        if scheduler is not None:
+            scheduler.step(logs["val/loss"])
         fabric.call("on_epoch_end", config=config, logs=logs, fabric=fabric,
-                    components={"model": model, "optimizer": optimizer})
+                    components={"model": model, "optimizer": optimizer, "scheduler": scheduler})
     fabric.call("on_train_end")
 
 
