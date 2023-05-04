@@ -9,7 +9,11 @@ dataset:
 
 run:
   load_model: None
-  n_epochs: 10
+  mode: full_image
+  n_epochs: 30
+  current_epoch: 0
+  store_state_path: checkpoints/s1/vq_vae_full_image
+  load_state_path: None
 
 optimizers:
   opt1:
@@ -44,8 +48,8 @@ logging:
     active: True
 
 model:
-  type: "TinyVQVAE"
+  type: "SmallVQVAE"
   params:
     num_hiddens: 16
-    num_embeddings: 16
-    embedding_dim: 32
+    num_embeddings: 4
+    embedding_dim: 16
