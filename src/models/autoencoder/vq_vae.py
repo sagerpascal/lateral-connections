@@ -74,7 +74,7 @@ class VectorQuantizer(nn.Module):
         perplexity = torch.exp(-torch.sum(avg_probs * torch.log(avg_probs + 1e-10)))
 
         # change view of encodings
-        encodings_v = encodings.view(input_shape[:-1] + (self._num_embeddings,))
+        encodings_v = encodings.view(input_shape[:-1] + (self._num_embeddings,)).permute(0, 3, 1, 2)
 
         # convert quantized from BHWC -> BCHW
         return loss, quantized.permute(0, 3, 1, 2).contiguous(), perplexity, encodings_v
@@ -170,7 +170,7 @@ class VectorQuantizerEMA(nn.Module):
         perplexity = torch.exp(-torch.sum(avg_probs * torch.log(avg_probs + 1e-10)))
 
         # change view of encodings
-        encodings_v = encodings.view(input_shape[:-1] + (self._num_embeddings,))
+        encodings_v = encodings.view(input_shape[:-1] + (self._num_embeddings,)).permute(0, 3, 1, 2)
 
         # convert quantized from BHWC -> BCHW
         return loss, quantized.permute(0, 3, 1, 2).contiguous(), perplexity, encodings_v
@@ -406,6 +406,89 @@ class VQVAE(nn.Module):
         return loss, x_recon, perplexity, encodings
 
 
+class PrintShape(nn.Module):
+
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x):
+        #print(x.shape)
+        return x
+
+class SmallVQVAE(nn.Module):
+    """
+    Small Vector Quantized Variational Auto-Encoder with only convolutional layers.
+    The field of view is limited so that the quantized encodings corresponds in its structure to the input image
+    """
+
+    def __init__(self,
+                 in_channels: int,
+                 num_hiddens: int,
+                 num_embeddings: int,
+                 embedding_dim: int,
+                 commitment_cost: float = 0.25,
+                 decay: float = 0.99,
+                 ):
+        """
+        Constructor.
+        :param in_channels: Number of input channels (number of channels of the image).
+        :param num_hiddens: Number of hidden channels.
+        :param num_embeddings: Number of embeddings (number of latent vectors).
+        :param embedding_dim: Size of the embedding vectors.
+        :param commitment_cost: Commitment cost factor.
+        :param decay: Decay factor for the exponential moving average update of the embedding vectors.
+        """
+        super().__init__()
+
+        self._encoder = nn.Sequential(
+            PrintShape(),
+            nn.Conv2d(in_channels=in_channels, out_channels=num_hiddens, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(True),
+            PrintShape(),
+            nn.Conv2d(in_channels=num_hiddens, out_channels=num_hiddens, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(True),
+            PrintShape(),
+        )
+
+        # Change number of channels (reduction)
+        self._pre_vq_conv = nn.Conv2d(in_channels=num_hiddens,
+                                      out_channels=embedding_dim,
+                                      kernel_size=1,
+                                      stride=1)
+        if decay > 0.0:
+            self._vq_vae = VectorQuantizerEMA(num_embeddings,
+                                              embedding_dim,
+                                              commitment_cost,
+                                              decay)
+        else:
+            self._vq_vae = VectorQuantizer(num_embeddings,
+                                           embedding_dim,
+                                           commitment_cost)
+
+        self._decoder = nn.Sequential(
+            PrintShape(),
+            nn.ConvTranspose2d(in_channels=embedding_dim, out_channels=num_hiddens, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(True),
+            PrintShape(),
+            nn.ConvTranspose2d(in_channels=num_hiddens, out_channels=in_channels, kernel_size=3, stride=1, padding=1),
+            PrintShape(),
+        )
+
+    def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+        """
+        Forward pass through the network.
+        :param x: Input tensor (image).
+        :return: Loss, reconstructed image, perplexity, and encodings.
+        """
+        z = self._encoder(x)
+        z = self._pre_vq_conv(z)
+        loss, quantized, perplexity, encodings = self._vq_vae(z)
+        x_recon = self._decoder(quantized)
+
+        return loss, x_recon, perplexity, encodings
+
+
+
 class TinyVQVAE(nn.Module):
     """
     Tiny Vector Quantized Variational Auto-Encoder with only convolutional layers.
@@ -437,7 +520,7 @@ class TinyVQVAE(nn.Module):
             nn.ReLU(True),
         )
 
-
+        # Change number of channels (reduction)
         self._pre_vq_conv = nn.Conv2d(in_channels=num_hiddens,
                                       out_channels=embedding_dim,
                                       kernel_size=1,
@@ -456,7 +539,6 @@ class TinyVQVAE(nn.Module):
             nn.ConvTranspose2d(in_channels=embedding_dim, out_channels=num_hiddens, kernel_size=3, stride=1, padding=1),
             nn.ReLU(True),
             nn.ConvTranspose2d(in_channels=num_hiddens, out_channels=in_channels, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(True),
         )
 
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
