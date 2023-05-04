@@ -1,6 +1,8 @@
 from typing import Dict, List, Optional
+
 from lightning.fabric.loggers import Logger
 from lightning.pytorch.loggers import WandbLogger
+
 from src.utils import print_logs
 
 

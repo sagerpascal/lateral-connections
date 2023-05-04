@@ -1,13 +1,14 @@
+import operator
+import os
 from argparse import Namespace
+from functools import reduce
+from pathlib import Path
+from typing import Any, Dict, List, Union
 
 import yaml
 from yaml.loader import SafeLoader
-from pathlib import Path
-from typing import Dict, Any, Union, List
-import os
-from src.utils.custom_print import print_info_config, print_exception, print_warn
-from functools import reduce
-import operator
+
+from src.utils.custom_print import print_exception, print_info_config, print_warn
 
 _path_t = Union[str, os.PathLike, Path]
 

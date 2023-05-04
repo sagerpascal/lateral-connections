@@ -1,9 +1,10 @@
-import torch
-from pathlib import Path
 import os
+from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
-from src.data import undo_norm_from_conf, plot_images, fig_to_img
+import torch
+
+from src.data import fig_to_img, plot_images, undo_norm_from_conf
 
 _path_t = Union[str, os.PathLike, Path]
 

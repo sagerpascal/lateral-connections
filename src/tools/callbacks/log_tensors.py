@@ -1,8 +1,9 @@
-import torch
-from typing import Optional, Union
-import pickle
 import os
+import pickle
 from pathlib import Path
+from typing import Optional, Union
+
+import torch
 
 _path_t = Union[str, os.PathLike, Path]
 

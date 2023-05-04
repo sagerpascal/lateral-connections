@@ -1,8 +1,10 @@
 from typing import Dict, Union
-import torchmetrics
-from src.tools import AverageMeter
-from lightning.fabric import Fabric
+
 import torch
+import torchmetrics
+from lightning.fabric import Fabric
+
+from src.tools import AverageMeter
 
 CLASSIFICATION_METRICS = ['Accuracy', 'AUROC', 'AveragePrecision', 'F1Score', 'Precision', 'Recall', 'Dice']
 REGRESSION_METRICS = ['MeanSquaredError', 'MeanAbsoluteError', 'MeanSquaredLogError', 'MeanAbsolutePercentageError']

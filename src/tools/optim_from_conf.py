@@ -1,5 +1,6 @@
+from typing import Dict, Iterator, List, Union
+
 import torch
-from typing import Dict, Iterator, Union, List
 from torch.nn import Parameter
 
 

@@ -1,9 +1,9 @@
-import torchvision
-from torch.utils.data import Dataset
-from typing import Optional, TypeVar, Callable, Any, List, Union
-import torch
 import os
 from pathlib import Path
+from typing import Any, Callable, List, Optional, TypeVar, Union
+
+import torch
+import torchvision
 from ffcv.fields import IntField, RGBImageField
 from ffcv.fields.decoders import IntDecoder, SimpleRGBImageDecoder
 from ffcv.loader import Loader, OrderOption
@@ -11,6 +11,8 @@ from ffcv.pipeline.operation import Operation
 from ffcv.transforms import Convert, ToDevice, ToTensor, ToTorchImage
 from ffcv.transforms.common import Squeeze
 from ffcv.writer import DatasetWriter
+from torch.utils.data import Dataset
+
 from src.utils import print_info_data, print_warn
 
 T_co = TypeVar('T_co', covariant=True)

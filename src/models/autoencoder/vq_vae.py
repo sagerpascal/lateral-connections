@@ -7,10 +7,11 @@ Sources:
 
 """
 
+from typing import Optional, Tuple
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Optional, Tuple
 from torch import Tensor
 
 
@@ -412,8 +413,9 @@ class PrintShape(nn.Module):
         super().__init__()
 
     def forward(self, x):
-        #print(x.shape)
+        # print(x.shape)
         return x
+
 
 class SmallVQVAE(nn.Module):
     """
@@ -486,7 +488,6 @@ class SmallVQVAE(nn.Module):
         x_recon = self._decoder(quantized)
 
         return loss, x_recon, perplexity, encodings
-
 
 
 class TinyVQVAE(nn.Module):

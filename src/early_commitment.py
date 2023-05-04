@@ -149,7 +149,8 @@ def setup_components(config: Dict[str, Optional[Any]]) -> (
     """
     Setup components for training.
     :param config: Configuration dict
-    :return: Returns the Fabric, the model, the optimizer, the train dataloader and the test dataloader and the callback.
+    :return: Returns the Fabric, the model, the optimizer, the train dataloader and the test dataloader and the
+    callback.
     """
     train_loader, _, test_loader = loaders_from_config(config)
     loggers = loggers_from_conf(config)

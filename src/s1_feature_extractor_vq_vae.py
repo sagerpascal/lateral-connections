@@ -1,5 +1,6 @@
 import argparse
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 import pytz
@@ -10,7 +11,6 @@ from lightning.fabric import Fabric
 from torch import Tensor
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from pathlib import Path
 
 from data import plot_images, undo_norm_from_conf
 from data.utils.patches2d import Patches2D

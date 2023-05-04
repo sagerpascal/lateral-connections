@@ -2,6 +2,7 @@
 Utility class to convert images to patches and vice versa.
 """
 from typing import Optional, Tuple
+
 import torch
 import torch.nn.functional as F
 
@@ -65,7 +66,7 @@ class Patches2D:
         :return: Patches tensor (BxNPxCxPHxPW) where NP is nuber of patches, PH patch height and PW patch width.
         """
         if self.padding_height > 0 or self.padding_width > 0:
-            image =self.pad_image(image)
+            image = self.pad_image(image)
         n_channels = image.shape[1]
         return image \
             .unfold(2, self.patch_height, self.patch_height) \
@@ -105,6 +106,8 @@ class Patches2D:
         n_channels = patches.shape[2]
 
         return patches \
-            .reshape(patches.shape[0], n_patches_height, n_patches_width, n_channels, self.patch_height, self.patch_width) \
+            .reshape(patches.shape[0], n_patches_height, n_patches_width, n_channels, self.patch_height,
+                     self.patch_width) \
             .permute(0, 3, 1, 4, 2, 5) \
-            .reshape(patches.shape[0], n_channels, self.image_height + self.padding_height, self.image_width + self.padding_width)
+            .reshape(patches.shape[0], n_channels, self.image_height + self.padding_height,
+                     self.image_width + self.padding_width)

@@ -1,8 +1,9 @@
-from torch.utils.data import DataLoader, Dataset
-from typing import Optional, TypeVar, Callable, Any, List, Tuple
-import torch
-import numpy as np
 import random
+from typing import Any, Callable, List, Optional, Tuple, TypeVar
+
+import numpy as np
+import torch
+from torch.utils.data import DataLoader, Dataset
 
 T_co = TypeVar('T_co', covariant=True)
 T = TypeVar('T')
@@ -77,8 +78,11 @@ def get_torch_data_loaders(
     :return: Data loaders for train, validation and test sets.
     """
 
-    train_loader = _get_loader_safe(train_set, batch_size, num_workers, pin_memory, collate_fn, shuffle_train, drop_last_train)
-    valid_loader = _get_loader_safe(valid_set, batch_size, num_workers, pin_memory, collate_fn, shuffle_valid, drop_last_valid)
-    test_loader = _get_loader_safe(test_set, batch_size, num_workers, pin_memory, collate_fn, shuffle_test, drop_last_test)
+    train_loader = _get_loader_safe(train_set, batch_size, num_workers, pin_memory, collate_fn, shuffle_train,
+                                    drop_last_train)
+    valid_loader = _get_loader_safe(valid_set, batch_size, num_workers, pin_memory, collate_fn, shuffle_valid,
+                                    drop_last_valid)
+    test_loader = _get_loader_safe(test_set, batch_size, num_workers, pin_memory, collate_fn, shuffle_test,
+                                   drop_last_test)
 
     return train_loader, valid_loader, test_loader
