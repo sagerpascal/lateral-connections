@@ -14,27 +14,28 @@ run:
   current_epoch: 0
   store_state_path: checkpoints/s1/vq_vae_full_image
   load_state_path: None
+  visualize_plots: False
 
 optimizers:
   opt1:
     type: Adam
     params:
       lr: 0.001
-      betas: [0.9, 0.999]
+      betas: [ 0.9, 0.999 ]
       eps: 0.00000001
       weight_decay: 0
       amsgrad: False
     scheduler:
       type: ReduceLROnPlateau
       params:
-          mode: min
-          factor: 0.1
-          patience: 5
-          threshold: 0.0001
-          threshold_mode: rel
-          cooldown: 0
-          min_lr: 0.000001
-          eps: 1e-08
+        mode: min
+        factor: 0.1
+        patience: 5
+        threshold: 0.0001
+        threshold_mode: rel
+        cooldown: 0
+        min_lr: 0.000001
+        eps: 1e-08
 
 metrics:
   - mae:
@@ -51,7 +52,7 @@ logging:
   wandb:
     active: False,
     save_dir: "../wandb"
-    project: "test"
+    project: "vq_vae_full_image"
     log_model: True
     group: "test_group"
     job_type: "train"

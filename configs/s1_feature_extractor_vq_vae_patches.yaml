@@ -10,17 +10,18 @@ dataset:
 run:
   load_model: None
   mode: patches
-  n_epochs: 10
+  n_epochs: 30
   current_epoch: 0
-  store_state_path: None
+  store_state_path: heckpoints/s1/vq_vae_patches
   load_state_path: None
+  visualize_plots: False
 
 optimizers:
   opt1:
     type: Adam
     params:
       lr: 0.001
-      betas: [0.9, 0.999]
+      betas: [ 0.9, 0.999 ]
       eps: 0.00000001
       weight_decay: 0
       amsgrad: False
@@ -51,7 +52,7 @@ logging:
   wandb:
     active: False,
     save_dir: "../wandb"
-    project: "test"
+    project: "vq_vae_patches"
     log_model: True
     group: "test_group"
     job_type: "train"

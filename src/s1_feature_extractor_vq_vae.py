@@ -66,6 +66,12 @@ def parse_args(parser: Optional[argparse.ArgumentParser] = None):
                         dest='logging:wandb:active',
                         help='Log to wandb'
                         )
+    parser.add_argument('--plot',
+                        action='store_true',
+                        default=False,
+                        dest='run:visualize_plots',
+                        help='Plot results'
+                        )
     parser.add_argument('--store',
                         type=str,
                         dest='run:store_state_path',
@@ -473,7 +479,7 @@ def single_eval_epoch(
                              colour="GREEN",
                              desc=f"Validate Epoch {epoch + 1}/{config['run']['n_epochs']}"):
             model.validation_step(batch, i)
-            if i == 0:
+            if config['run']['visualize_plots'] and i == 0:
                 model.visualize_samples(batch, i)
                 if hasattr(model, "visualize_encodings"):
                     model.visualize_encodings(batch, i)
