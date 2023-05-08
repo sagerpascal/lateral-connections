@@ -130,11 +130,11 @@ dmypy.json
 
 # Project exclude paths
 .idea/
-checkpoints/
-data/
-wandb/
-plots/
-tmp/
+/checkpoints/
+/data/
+/wandb/
+/plots/
+/tmp/
 
 # Project specific files
 *.pt
