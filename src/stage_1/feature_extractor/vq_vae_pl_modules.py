@@ -48,19 +48,19 @@ class VQVAEFeatureExtractorPatchMode(BaseLitModule):
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
         """
         Forward pass through the model.
-        :param x:
+        :param x: Input image.
         :return: Loss, reconstructed image, perplexity, and encodings.
         """
         return self.model(x)
 
     def step(self, batch: Tensor, batch_idx: int, mode_prefix: str) -> Tensor:
         """
-                Forward step: Forward pass, and logging.
-                :param batch: Data batch, containing input data and labels.
-                :param batch_idx: Index of the batch.
-                :param mode_prefix: Prefix for the mode (train, val, test).
-                :return: Loss of the training step.
-                """
+        Forward step: Forward pass, and logging.
+        :param batch: Data batch, containing input data and labels.
+        :param batch_idx: Index of the batch.
+        :param mode_prefix: Prefix for the mode (train, val, test).
+        :return: Loss of the training step.
+        """
         x, y = batch
         x = self.prepare_data_(x)
         loss = []
