@@ -6,6 +6,7 @@ from torchvision import transforms
 from torchvision.datasets import CIFAR10, CIFAR100, ImageNet, MNIST
 
 from data.augmentation import get_image_augmentation, get_transform_pipeline
+from data.custom_datasets.straight_line import StraightLine
 from data.loader import get_ffcv_data_loaders, get_ffcv_image_pipeline, get_ffcv_label_pipeline, \
     get_torch_data_loaders
 
@@ -15,7 +16,7 @@ _path_t = Union[str, os.PathLike, Path]
 
 def _get_dataset(
         dataset_name: str,
-        dataset_path: _path_t,
+        dataset_path: Optional[_path_t] = None,
         transform: Optional[transforms.Compose] = None,
 ) -> Tuple[Any, Optional[Any], Any]:
     """
@@ -40,6 +41,10 @@ def _get_dataset(
         train_set = ImageNet(root=dataset_path, split="train", download=True, transform=transform)
         valid_set = ImageNet(root=dataset_path, split="val", download=True, transform=transform)
         test_set = ImageNet(root=dataset_path, split="test", download=True, transform=transform)
+    elif dataset_name == "straightline":
+        train_set = StraightLine(split="train", transform=transform)
+        valid_set = StraightLine(split="val", transform=transform)
+        test_set = StraightLine(split="test", transform=transform)
     else:
         raise ValueError("Unknown dataset name: {}".format(dataset_name))
 
@@ -55,7 +60,8 @@ def loaders_from_config(config: Dict) -> Union[Any, Any, Any]:
     data_config = config["dataset"]
     if data_config["loader"] == "torch":
         transform = get_transform_pipeline(config)
-        train_set, valid_set, test_set = _get_dataset(data_config["name"], data_config["dir"], transform)
+        dir_ = data_config["dir"] if "dir" in data_config else None
+        train_set, valid_set, test_set = _get_dataset(data_config["name"], dir_, transform)
         return get_torch_data_loaders(
             train_set=train_set,
             valid_set=valid_set,
@@ -68,7 +74,8 @@ def loaders_from_config(config: Dict) -> Union[Any, Any, Any]:
         augmentations = get_image_augmentation(config)
         image_pipeline = get_ffcv_image_pipeline(mean, std, augmentations)
         label_pipeline = get_ffcv_label_pipeline()
-        train_set, valid_set, test_set = _get_dataset(data_config["name"], data_config["dir"])
+        dir_ = data_config["dir"] if "dir" in data_config else None
+        train_set, valid_set, test_set = _get_dataset(data_config["name"], dir_)
         return get_ffcv_data_loaders(
             image_pipeline=image_pipeline,
             label_pipeline=label_pipeline,

@@ -38,6 +38,13 @@ imagenet:
   num_classes: 1000
   num_channels: 3
 
+straightline:
+  num_channels: 1
+  mean: [ 0. ]
+  std: [ 1. ]
+  img_width: 32
+  img_height: 32
+
 augmentation_v1:
   aug1:
     - probability: 0.8
