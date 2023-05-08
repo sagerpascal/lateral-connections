@@ -8,7 +8,6 @@ dataset:
   patch_width: 4
 
 run:
-  load_model: None
   mode: patches
   n_epochs: 30
   current_epoch: 0
@@ -35,7 +34,7 @@ optimizers:
         threshold_mode: rel
         cooldown: 0
         min_lr: 0.000001
-        eps: 1e-08
+        eps: 0.00000001
 
 metrics:
   - mae:

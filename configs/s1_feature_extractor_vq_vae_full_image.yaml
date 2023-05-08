@@ -4,17 +4,14 @@ dataset:
   loader: torch
   batch_size: 128
   num_workers: 0
-  patch_height: 4
-  patch_width: 4
 
 run:
-  load_model: None
   mode: full_image
   n_epochs: 100
   current_epoch: 0
-  store_state_path: ../checkpoints/s1/vq_vae_full_image
-  load_state_path: None
-  visualize_plots: False
+  store_state_path: None  # ../checkpoints/s1/vq_vae_full_image
+  load_state_path: ../checkpoints/s1/vq_vae_full_image/s1_2023-05-04_15-48-50.ckpt
+  visualize_plots: True
 
 optimizers:
   opt1:
@@ -35,7 +32,7 @@ optimizers:
         threshold_mode: rel
         cooldown: 0
         min_lr: 0.000001
-        eps: 1e-08
+        eps: 0.00000001
 
 metrics:
   - mae:
