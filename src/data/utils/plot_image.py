@@ -43,11 +43,13 @@ def undo_norm_from_conf(img: torch.Tensor, config: Dict[str, Any]):
 
 def plot_images(
         images: List[Any],
-        masks: Optional[List[Any]],
+        masks: Optional[List[Any]] = None,
         titles: Optional[List[Any]] = None,
         show_plot: bool = True,
         fig_fp: Optional[str] = None,
         max_cols: Optional[int] = 5,
+        vmin: Optional[Union[float, int]] = None,
+        vmax: Optional[Union[float, int]] = None,
 ) -> plt.Figure:
     """
     Plot images.
@@ -57,6 +59,8 @@ def plot_images(
     :param show_plot: Show plot.
     :param fig_fp: File path to save figure.
     :param max_cols: Maximum number of columns.
+    :param vmin: Minimum value.
+    :param vmax: Maximum value.
     :return: matplotlib Figure.
     """
     if isinstance(images, torch.Tensor) and len(images.shape) == 4:
@@ -85,7 +89,7 @@ def plot_images(
     for i, (img, lbl) in enumerate(zip(images, titles)):
         ax = axes[i // cols, i % cols] if cols > 1 and rows > 1 else axes[i % cols] if cols > 1 else axes
         if isinstance(img, torch.Tensor):
-            img = transform(img)
+            img = transform(img.squeeze())
         if isinstance(img, Image):
             img = np.array(img)
 
@@ -96,12 +100,12 @@ def plot_images(
             if isinstance(mask, Image):
                 mask = np.array(mask)
 
-        if img.shape[-1] == 1:
-            ax.imshow(img, cmap='binary')
+        if img.shape[-1] == 1 or len(img.shape) == 2:
+            ax.imshow(img, cmap='gray', vmin=vmin, vmax=vmax)
         else:
-            ax.imshow(img)
+            ax.imshow(img, vmin=vmin, vmax=vmax)
 
-        if mask is not None:
+        if masks is not None:
             ax.imshow(mask, alpha=0.6, cmap='jet', interpolation='none')
 
         if lbl is not None:
