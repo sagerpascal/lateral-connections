@@ -36,8 +36,10 @@ def _add_data_config(config: Dict[str, Any]) -> Dict[str, Any]:
     dataset_augmentation = config["dataset"]["augmentation"]
     data_config = _load_config(DATA_CONFIGS_FP)
     config["dataset"] = config["dataset"] | data_config[dataset_name]
-    config["dataset"]["dir"] = Path(data_config["base_dir"]) / config["dataset"]["dir"]
-    config["dataset"]["beton_dir"] = Path(data_config["base_dir"]) / config["dataset"]["beton_dir"]
+    if "dir" in config["dataset"]:
+        config["dataset"]["dir"] = Path(data_config["base_dir"]) / config["dataset"]["dir"]
+    if "beton_dir" in config["dataset"]:
+        config["dataset"]["beton_dir"] = Path(data_config["base_dir"]) / config["dataset"]["beton_dir"]
 
     if dataset_augmentation is not None and dataset_augmentation != "None":
         config["dataset"]["augmentation"] = data_config[dataset_augmentation]
