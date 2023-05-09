@@ -41,5 +41,5 @@ class SaveBestModelCallback:
             print_info_best_model(f"Model achieved {self.best_metric:.4f} on {self.metric_key}", "New best model")
 
             path = save_run(config, fabric, components)
-            if config['logging']['wandb']['active']:
+            if config['logging']['wandb']['active'] and config['logging']['wandb']['log_model']:
                 wandb.save(path, base_path=str(Path(path).parent.absolute()), policy="now")
