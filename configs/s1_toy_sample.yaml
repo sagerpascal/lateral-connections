@@ -1,0 +1,25 @@
+dataset:
+  name: straightline
+  augmentation: None
+  loader: torch
+  batch_size: 256
+  num_workers: 0
+
+run:
+  n_epochs: 100
+  current_epoch: 0
+  n_timesteps_max: 20
+  visualize_plots: False
+
+
+logging:
+  wandb:
+    active: False,
+    save_dir: "../wandb"
+    project: "lateral_connections_toy_example"
+    log_model: True
+    group: "hebbian_learning"
+    job_type: "train"
+  console:
+    active: True
+
