@@ -2,6 +2,7 @@ import argparse
 from typing import Any, Dict, List, Optional
 
 import lightning.pytorch as pl
+import numpy as np
 import torch
 import torch.nn.functional as F
 from lightning import Fabric
@@ -124,27 +125,7 @@ def setup_feature_extractor(config: Dict[str, Optional[Any]], fabric: Fabric) ->
     return feature_extractor
 
 
-def plot_features_single_sample(img: Tensor, features: Tensor, z: List[Tensor]):
-    """
-    Plot the features extracted from a single sample.
-    :param img: The original image
-    :param features: The features extracted from the image.
-    :param z: The activations of the lateral network over time.
-    """
-    images = [img]
-    titles = ["Input"]
 
-    for i in range(features.shape[0]):
-        images.append(features[i])
-        titles.append(f"Extracted Feature {i + 1}")
-
-    for t in range(len(z)):
-        z_t = z[t]
-        for i in range(z_t.shape[0]):
-            images.append(z_t[i])
-            titles.append(f"Extracted Feature {i + 1} (t={t})")
-
-    plot_images(images=images, titles=titles, max_cols=5, vmin=0., vmax=1.)
 
 
 def single_train_epoch(
@@ -168,23 +149,14 @@ def single_train_epoch(
                          desc=f"Train Epoch {epoch + 1}/{config['run']['n_epochs']}"):
         with torch.no_grad():  # No gradients updates (Hebbian learning)
             features = feature_extractor(batch)
-            z = torch.bernoulli(features.clip(0, 1))
+        lateral_network.model.train_ = True
+        lateral_network.forward_steps_through_time(features)
+        lateral_network.model.train_ = False
 
-            # Run lateral network over multiple timesteps
-            z_old = z
-            features_t, changes = [], []
-            for j in range(config['run']['n_timesteps_max']):
-                z = lateral_network(z_old)
-                changes.append(F.l1_loss(z_old, z).item())
-                features_t.append(z)
-                z_old = z.clone()
-
-            # Plot sample
-            if i == (len(train_loader) - 1) and config['run']['visualize_plots']:
-                print("Changes between images:", changes[0], "-> ", changes[-1])
-                feature_extractor.visualize_encodings(batch)
-                features_t_sample_0 = [f[0] for f in features_t]
-                plot_features_single_sample(batch[0], features[0], features_t_sample_0)
+        # Plot sample
+        if i == (len(train_loader) - 1) and config['run']['visualize_plots']:
+            lateral_network.plot_features_single_sample(batch, features)
+            lateral_network.plot_model_weights()
 
 
 def single_eval_epoch(
@@ -222,6 +194,7 @@ def train(
     for epoch in range(start_epoch, config['run']['n_epochs']):
         config['run']['current_epoch'] = epoch
         single_train_epoch(config, feature_extractor, lateral_network, train_loader, epoch)
+        lateral_network.on_epoch_end()
 
 
 def setup_lateral_network(config, fabric) -> pl.LightningModule:

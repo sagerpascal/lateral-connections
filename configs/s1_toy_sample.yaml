@@ -2,13 +2,12 @@ dataset:
   name: straightline
   augmentation: None
   loader: torch
-  batch_size: 256
+  batch_size: 1
   num_workers: 0
 
 run:
   n_epochs: 100
   current_epoch: 0
-  n_timesteps_max: 20
   visualize_plots: False
 
 
@@ -23,3 +22,12 @@ logging:
   console:
     active: True
 
+feature_extractor:
+  out_channels: 4
+
+lateral_model:
+  locality_size: 5
+  alpha: 0.09 #0.905
+  lr: 0.01
+  max_timesteps: 5  # 2000
+  change_threshold: 0.00001
