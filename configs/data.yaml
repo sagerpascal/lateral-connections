@@ -9,6 +9,13 @@ cifar10:
   num_channels: 3
   img_width: 32
   img_height: 32
+  train_dataset_params:
+    train: True
+    download: True
+  test_dataset_params:
+    train: False
+    download: True
+
 
 cifar100:
   dir: cifar100/
@@ -19,6 +26,12 @@ cifar100:
   num_channels: 3
   img_width: 32
   img_height: 32
+  train_dataset_params:
+    train: True
+    download: True
+  test_dataset_params:
+    train: False
+    download: True
 
 mnist:
   dir: mnist/
@@ -29,6 +42,12 @@ mnist:
   num_channels: 1
   img_width: 28
   img_height: 28
+  train_dataset_params:
+    train: True
+    download: True
+  test_dataset_params:
+    train: False
+    download: True
 
 imagenet:
   dir: imagenet/
@@ -37,6 +56,15 @@ imagenet:
   std: [ 0.229, 0.224, 0.225 ]
   num_classes: 1000
   num_channels: 3
+  train_dataset_params:
+    split: "train"
+    download: True
+  valid_dataset_params:
+    split: "val"
+    download: True
+  test_dataset_params:
+    split: "test"
+    download: True
 
 straightline:
   num_channels: 1
@@ -44,6 +72,18 @@ straightline:
   std: [ 1. ]
   img_width: 32
   img_height: 32
+  train_dataset_params:
+    split: "train"
+    num_images: 1000
+    num_aug_versions: 10
+  valid_dataset_params:
+    split: "val"
+    num_images: 100
+    num_aug_versions: 10
+  test_dataset_params:
+    split: "test"
+    num_images: 100
+    num_aug_versions: 20
 
 augmentation_v1:
   aug1:
