@@ -1,9 +1,10 @@
 import random
 from typing import Callable, Literal, Optional, Tuple
 
+import torch
 from PIL import Image, ImageDraw
 from torch.utils.data import Dataset
-
+import torchvision.transforms as T
 
 class StraightLine(Dataset):
 
@@ -11,7 +12,8 @@ class StraightLine(Dataset):
                  split: Literal['train', 'val', 'test'],
                  img_h: Optional[int] = 32,
                  img_w: Optional[int] = 32,
-                 num_images: Optional[int] = 10_000,
+                 num_images: Optional[int] = 50,
+                 num_aug_versions: Optional[int] = 0,
                  num_channels: Literal[1, 3] = 1,
                  transform: Optional[Callable] = None):
         """
@@ -19,18 +21,26 @@ class StraightLine(Dataset):
         :param img_h: Height of the images.
         :param img_w: Width of the images.
         :param num_images: Number of images to generate.
+        :param num_aug_versions: Number of similar versions of each image to generate.
         :param num_channels: Number of channels of the images (1 for grayscale, 3 for RGB).
         :param transform: Optional transform to be applied on a sample.
         """
         super().__init__()
         assert num_channels == 1 or num_channels == 3, "num_channels must be 1 or 3"
+        assert num_aug_versions >= 0, "num_aug_versions must be >= 0"
 
         self.split = split
         self.img_h = img_h
         self.img_w = img_w
         self.num_images = num_images
+        self.num_aug_versions = num_aug_versions
         self.num_channels = num_channels
         self.transform = transform
+
+        if self.transform is None:
+            self.transform = T.Compose([
+                T.ToTensor(),
+            ])
 
     def __len__(self):
         """
@@ -55,26 +65,62 @@ class StraightLine(Dataset):
                 y1 = y2
             else:
                 x1 = x2
+
+        return (5, 5), (10, 25)
         return (x1, y1), (x2, y2)
 
-    def _create_l_image(self):
+    def _slightly_change_line_coords(self, coords: Tuple[Tuple[int, int], Tuple[int, int]]) -> Tuple[Tuple[int, int], Tuple[int, int]]:
+        """
+        Slightly changes the coordinates of a straight line.
+        :param coords: The coordinates of the straight line.
+        :return: The new coordinates.
+        """
+        range_ = 2
+        (x1, y1), (x2, y2) = coords
+
+        x1 += random.randint(-range_, range_)
+        y1 += random.randint(-range_, range_)
+        x2 += random.randint(-range_, range_)
+        y2 += random.randint(-range_, range_)
+
+        return (x1, y1), (x2, y2)
+
+    def _create_l_image(self, line_coords: Optional[Tuple[Tuple[int, int], Tuple[int, int]]]) -> Image:
         """
         Creates a black grayscale image with a random straight line in withe drawn on it.
+        :param line_coords: The coordinates of the line to draw.
         :return: The image.
         """
         img = Image.new('L', (self.img_w, self.img_h), color=0)
         draw = ImageDraw.Draw(img)
-        draw.line(self._get_random_line_coords(), fill=255, width=1)
+        draw.line(line_coords, fill=255, width=1)
         return img
 
-    def _create_rgb_image(self):
+    def _create_rgb_image(self, line_coords: Optional[Tuple[Tuple[int, int], Tuple[int, int]]]) -> Image:
         """
         Creates a black RGB image with a random straight line in withe drawn on it.
+        :param line_coords: The coordinates of the line to draw.
         :return: The image.
         """
         img = Image.new('RGB', (self.img_w, self.img_h), color=(0, 0, 0))
         draw = ImageDraw.Draw(img)
-        draw.line(self._get_random_line_coords(), fill=(255, 255, 255), width=1)
+        draw.line(line_coords, fill=(255, 255, 255), width=1)
+        return img
+
+    def _create_image(self, line_coords: Optional[Tuple[Tuple[int, int], Tuple[int, int]]]) -> Image:
+        """
+        Creates either a RBG or a grayscale image with a random straight line in withe drawn on it.
+        :param line_coords: The coordinates of the line to draw.
+        :return: The image.
+        """
+        if self.num_channels == 1:
+            img = self._create_l_image(line_coords)
+        elif self.num_channels == 3:
+            img = self._create_rgb_image(line_coords)
+
+        if self.transform:
+            img = self.transform(img)
+
         return img
 
     def __getitem__(self, idx):
@@ -83,15 +129,14 @@ class StraightLine(Dataset):
         :param idx: Index of the image to return (has no effect)
         :return: The image
         """
-        if self.num_channels == 1:
-            img = self._create_l_image()
-        elif self.num_channels == 3:
-            img = self._create_rgb_image()
+        line_coords = self._get_random_line_coords()
 
-        if self.transform:
-            img = self.transform(img)
+        images = [self._create_image(line_coords)]
+        for i in range(self.num_aug_versions):
+            images.append(self._create_image(self._slightly_change_line_coords(line_coords)))
 
-        return img
+        images = torch.stack(images, dim=0) if self.num_aug_versions > 0 else images[0]
+        return images
 
 
 def _plot_some_samples():
@@ -105,13 +150,15 @@ def _plot_some_samples():
         transforms.ToTensor(),
     ])
 
-    dataset = StraightLine(split="test", img_h=32, img_w=32, num_images=10, num_channels=1, transform=transform)
+    dataset = StraightLine(split="test", img_h=32, img_w=32, num_images=10, num_aug_versions=4, num_channels=1, transform=transform)
 
-    fig, axs = plt.subplots(2, 5, figsize=(10, 3))
+    fig, axs = plt.subplots(10, 5, figsize=(10, 10))
     for i in range(10):
         img = dataset[i]
-        axs[i // 5, i % 5].imshow(img.squeeze(), vmin=0, vmax=1, cmap='gray')
-        axs[i // 5, i % 5].axis('off')
+        for idx in range(img.shape[0]):
+            j = i * 5 + idx
+            axs[j // 5, j % 5].imshow(img[idx].squeeze(), vmin=0, vmax=1, cmap='gray')
+            axs[j // 5, j % 5].axis('off')
     plt.tight_layout()
     plt.show()
 
