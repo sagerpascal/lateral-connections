@@ -27,7 +27,7 @@ def parse_args(parser: Optional[argparse.ArgumentParser] = None):
     :return: Parsed arguments.
     """
     if parser is None:
-        parser = argparse.ArgumentParser(description="Analysis of Early Commitment")
+        parser = argparse.ArgumentParser(description="Feature Extractor Stage 1")
     parser.add_argument("config",
                         type=str,
                         help="Path to the config file",
@@ -76,9 +76,6 @@ def parse_args(parser: Optional[argparse.ArgumentParser] = None):
                         help='Path from where the model will be loaded'
                         )
 
-    store_state_path: None
-    load_state_path: None
-
     args = parser.parse_args()
     return args
 
@@ -98,16 +95,19 @@ def get_model(config: Dict[str, Optional[Any]], fabric: Fabric) -> BaseLitModule
         raise ValueError(f"Mode {config['run']['mode']} unknown / not implemented")
 
 
-def setup_fabric(config: Dict[str, Optional[Any]]) -> Fabric:
+def setup_fabric(config: Optional[Dict[str, Optional[Any]]] = None) -> Fabric:
     """
     Setup the Fabric instance.
     :param config: Configuration dict
     :return: Fabric instance
     """
-    callbacks = []
-    if "store_state_path" in config["run"] and config["run"]["store_state_path"] != 'None':
-        callbacks.append(SaveBestModelCallback(metric_key="val/loss", mode="min"))
-    loggers = loggers_from_conf(config)
+    if config is None:
+        callbacks, loggers = [], []
+    else:
+        callbacks = []
+        if "store_state_path" in config["run"] and config["run"]["store_state_path"] != 'None':
+            callbacks.append(SaveBestModelCallback(metric_key="val/loss", mode="min"))
+        loggers = loggers_from_conf(config)
     fabric = Fabric(accelerator="auto", devices=1, loggers=loggers, callbacks=callbacks)
     fabric.launch()
     fabric.seed_everything(1)
@@ -269,7 +269,7 @@ def train_feature_extractor(
 
 def main():
     """
-    Run the model and store the models activations in the last epoch.
+    Run the model and store the model with the lowest loss.
     """
     print_start("Starting python script 's1_feature_extractor_vq_vae.py'...",
                 title="Training S1: VQ-VAE Feature Extractor")
