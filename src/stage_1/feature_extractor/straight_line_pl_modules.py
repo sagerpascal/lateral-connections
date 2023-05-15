@@ -83,7 +83,6 @@ class FixedDogFilter(nn.Module):
         :param x: Image to perform the convolution on.
         :return: Extracted features.
         """
-        raise NotImplementedError("Normalize data before calling this function.")
         if len(x.shape) == 5:
             result = []
             for idx in range(x.shape[1]):
@@ -123,6 +122,7 @@ class FixedFilterFeatureExtractor(pl.LightningModule):
            :return: The model.
            """
         return Conv2dFixedFilters(self.fabric)
+        # return FixedDogFilter(filter_size=12, fabric=self.fabric)
 
     def visualize_encodings(self, x: Tensor):
         """

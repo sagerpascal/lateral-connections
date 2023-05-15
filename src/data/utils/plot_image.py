@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import torchvision.transforms as T
 from PIL.Image import Image
-
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 def undo_norm(img: torch.Tensor, mean: torch.Tensor, std: torch.Tensor):
     """
@@ -50,6 +50,7 @@ def plot_images(
         max_cols: Optional[int] = 5,
         vmin: Optional[Union[float, int]] = None,
         vmax: Optional[Union[float, int]] = None,
+        plot_colorbar: Optional[bool] = False
 ) -> plt.Figure:
     """
     Plot images.
@@ -61,6 +62,7 @@ def plot_images(
     :param max_cols: Maximum number of columns.
     :param vmin: Minimum value.
     :param vmax: Maximum value.
+    :param plot_colorbar: Plot colorbar.
     :return: matplotlib Figure.
     """
     if isinstance(images, torch.Tensor) and len(images.shape) == 4:
@@ -89,7 +91,7 @@ def plot_images(
     for i, (img, lbl) in enumerate(zip(images, titles)):
         ax = axes[i // cols, i % cols] if cols > 1 and rows > 1 else axes[i % cols] if cols > 1 else axes
         if isinstance(img, torch.Tensor):
-            img = transform(img.squeeze())
+            img = img.detach().squeeze().cpu().numpy()  # transform(img.squeeze())
         if isinstance(img, Image):
             img = np.array(img)
 
@@ -100,10 +102,18 @@ def plot_images(
             if isinstance(mask, Image):
                 mask = np.array(mask)
 
+        if (vmax is not None and img.max() > vmax) or (vmin is not None and img.min() < vmin):
+            raise ValueError("Image values must be between vmin and vmax.")
+
         if img.shape[-1] == 1 or len(img.shape) == 2:
-            ax.imshow(img, cmap='gray', vmin=vmin, vmax=vmax)
+            im = ax.imshow(img, cmap='gray', vmin=vmin, vmax=vmax, interpolation='None')
         else:
-            ax.imshow(img, vmin=vmin, vmax=vmax)
+            im = ax.imshow(img, vmin=vmin, vmax=vmax, interpolation='None')
+
+        if plot_colorbar:
+            divider = make_axes_locatable(ax)
+            cax = divider.append_axes('right', size='5%', pad=0.05)
+            fig.colorbar(im, cax=cax, orientation='vertical')
 
         if masks is not None:
             ax.imshow(mask, alpha=0.6, cmap='jet', interpolation='none')

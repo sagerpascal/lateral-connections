@@ -25,7 +25,8 @@ class LateralLayerEfficient(nn.Module):
 
     def __init__(self,
                  fabric,
-                 n_channels: int,
+                 in_channels: int,
+                 out_channels: int,
                  locality_size: Optional[int] = 5,
                  lr: Optional[float] = 0.01,
                  ):
@@ -34,30 +35,30 @@ class LateralLayerEfficient(nn.Module):
         Source: https://github.com/ThomasMiconi/HebbianCNNPyTorch/tree/main
 
         :param fabric: Fabric instance.
-        :param n_channels: Number of channels in the input and output.
+        :param in_channels: Number of input channels.
+        :param out_channels: Number of output channels.
         :param locality_size: Size of the locality, i.e. how many neurons are connected to each other. For
         example, if locality_size = 2, then each neuron is connected to 5 neurons on each side of it.
-        :param alpha: Factor by which the activation probability is normalized (lower values lead to higher
-        activation probabilities).
         :param lr: Learning rate.
         """
         super().__init__()
-        self.n_channels = n_channels
+        self.in_channels = in_channels
+        self.out_channels = out_channels
         self.locality_size = locality_size
         self.neib_size = 2 * self.locality_size + 1
         self.lr = lr
         self.k = 1
         self.thr_rate = 10.
-        self.target_rate = self.k / self.n_channels
+        self.target_rate = self.k / self.out_channels
         self.train_ = True
         self.step = 0
 
-        self.W = torch.randn((self.n_channels, self.n_channels, self.neib_size, self.neib_size), requires_grad=True,
+        self.W = torch.randn((self.out_channels, self.in_channels, self.neib_size, self.neib_size), requires_grad=True,
                              device=fabric.device)
         self.W.data = self.W.data / (1e-10 + torch.sqrt(torch.sum(self.W.data ** 2, dim=[1, 2, 3], keepdim=True)))
-        self.b = torch.zeros((1, self.n_channels, 1, 1), requires_grad=False).to(fabric.device)
+        self.b = torch.zeros((1, self.out_channels, 1, 1), requires_grad=False).to(fabric.device)
 
-        self.optimizer = torch.optim.Adam([self.W,], lr=self.lr)
+        self.optimizer = torch.optim.Adam([self.W, ], lr=self.lr)
 
     def forward(self, x: Tensor) -> Tensor:
         self.optimizer.zero_grad()
@@ -72,25 +73,27 @@ class LateralLayerEfficient(nn.Module):
             realy.data = (realy.data > 0).float()
 
         # Then we compute the surrogate output yforgrad, whose gradient computations produce the desired Hebbian output
-        # Note: We must not include thresholds here, as this would not produce the expected gradient expressions. The actual values will come from realy, which does include thresholding.
+        # Note: We must not include thresholds here, as this would not produce the expected gradient expressions. The
+        # actual values will come from realy, which does include thresholding.
         yforgrad = prelimy - 1 / 2 * torch.sum(self.W * self.W, dim=(1, 2, 3))[None, :, None, None]
         yforgrad.data = realy.data  # We force the value of yforgrad to be the "correct" y
 
         loss = torch.sum(-1 / 2 * yforgrad * yforgrad)
         loss.backward()
-        if self.step > 100 and self.train_:  # No weight modifications before batch 100 (burn-in) or after learning epochs (during data accumulation for training / testing)
+        if self.step > 100 and self.train_:  # No weight modifications before batch 100 (burn-in) or after learning
+            # epochs (during data accumulation for training / testing)
             self.optimizer.step()
-            self.W.data = self.W.data / (1e-10 + torch.sqrt(torch.sum(self.W.data ** 2, dim=[1, 2, 3], keepdim=True)))  # Weight normalization
+            self.W.data = self.W.data / (1e-10 + torch.sqrt(
+                torch.sum(self.W.data ** 2, dim=[1, 2, 3], keepdim=True)))  # Weight normalization
 
         with torch.no_grad():
-            # Threshold adaptation is based on realy, i.e. the one used for plasticity. Always binarized (firing vs. not firing).
+            # Threshold adaptation is based on realy, i.e. the one used for plasticity. Always binarized (firing vs.
+            # not firing).
             self.b += self.thr_rate * (
-                        torch.mean((realy.data > 0).float(), dim=(0, 2, 3))[None, :, None, None] - self.target_rate)
+                    torch.mean((realy.data > 0).float(), dim=(0, 2, 3))[None, :, None, None] - self.target_rate)
 
         self.step += 1
         return realy.detach()
-
-
 
 
 class LateralLayerToy(nn.Module):
@@ -173,6 +176,45 @@ class LateralLayerToy(nn.Module):
         return output
 
 
+class LateralLayerEfficientNetwork(nn.Module):
+
+    def __init__(self, conf, fabric):
+        super().__init__()
+        self.conf = conf
+        self.fabric = fabric
+        lm_conf = self.conf["lateral_model"]
+
+        self.l1 = LateralLayerEfficient(
+            self.fabric,
+            in_channels=self.conf["feature_extractor"]["out_channels"],
+            out_channels=lm_conf["channels"],
+            locality_size=lm_conf['locality_size'],
+            lr=lm_conf['lr']
+        )
+        self.l2 = LateralLayerEfficient(
+            self.fabric,
+            in_channels=lm_conf["channels"],
+            out_channels=lm_conf["channels"],
+            locality_size=lm_conf['locality_size'],
+            lr=lm_conf['lr']
+        )
+
+    def forward(self, x):
+        t = 0
+        changes, features = [], []
+        x = self.l1(x)
+        features.append(x)
+        for t in range(self.conf["lateral_model"]["max_timesteps"]):
+            x_old = x
+            x = self.l2(x)
+            change = F.l1_loss(x_old, x).item()
+            changes.append(change)
+            features.append(x)
+            if change < self.conf["lateral_model"]["change_threshold"]:
+                break
+        return changes, features, t
+
+
 class LateralNetwork(pl.LightningModule):
     """
     PyTorch Lightning module for a network with a single lateral layer.
@@ -198,43 +240,30 @@ class LateralNetwork(pl.LightningModule):
         """
         return self.model(x)
 
-    def forward_steps_through_time(self, x: Tensor) -> Tuple[List[Tensor], List[float], List[int]]:
+    def forward_steps_through_time(self, x: Tensor) -> Tuple[List[Tensor],List[Tensor], List[float]]:
         """
         Forward pass through the model over multiple timesteps. The number of timesteps depends on the change
         threshold and the maximum number of timesteps (i.e. the forward pass through time is cancel if the activations'
         change is below a given threshold).
         :param x: Features extracted from the image.
-        :return: List of features, list of changes, list ov view indexes.
+        :return: List of features extracted by the feature extractor, List of features build by lateral connections, list of changes
         """
         # if x.unique().shape[0] > 2 or x.unique(sorted=True) != torch.tensor([0, 1]):
-            # x = torch.bernoulli(x.clip(0, 1))
-            # x = torch.where(x > 0.5, 1., 0.)
+        # x = torch.bernoulli(x.clip(0, 1))
+        # x = torch.where(x > 0.5, 1., 0.)
 
-        with torch.no_grad():
-            dd = (2, 3, 4) if len(x.shape) == 5 else (1, 2, 3)
-            x = x - torch.mean(x, dim=dd, keepdim=True)
-            x = x / (1e-10 + torch.std(x, dim=dd, keepdim=True))
-
-
-        changes, features, view_idxes = [], [], []
+        changes, input_features, lateral_features = [], [], []
         for view_idx in range(x.shape[1]):
-            t = 0
             x_view = x[:, view_idx, ...]
-            features.append(x_view)
-            view_idxes.append(view_idx)
-            for t in range(self.conf["lateral_model"]["max_timesteps"]):
-                x_old = x_view
-                x_view = self.forward(x_view)
-                change = F.l1_loss(x_old, x_view).item()
-                changes.append(change)
-                features.append(x_view)
-                view_idxes.append(view_idx)
-                if change < self.conf["lateral_model"]["change_threshold"]:
-                    break
-
+            x_view = torch.where(x_view > 0., 1., 0.)
+            input_features.append(x_view)
+            changes_, features_, t = self.forward(x_view)
+            changes.append(1.)
+            changes.append(changes_)
+            lateral_features.append(features_)
             self.avg_meter_t(t)
 
-        return features, changes, view_idxes
+        return input_features, lateral_features, changes
 
     def get_logs(self) -> Dict[str, float]:
         """
@@ -277,20 +306,25 @@ class LateralNetwork(pl.LightningModule):
             ax.set_title(title)
 
         def _plot_weights(ax, weight, title):
-            weight_img_list = [weight[i, j].unsqueeze(0) for i in range(weight.shape[0]) for j in range(weight.shape[1])]
+            weight_img_list = [weight[i, j].unsqueeze(0) for i in range(weight.shape[0]) for j in
+                               range(weight.shape[1])]
             # Order is [(0, 0), (0, 1), ..., (3, 2), (3, 3)]
             # Each row shows the input weights per output channel
             grid = utils.make_grid(weight_img_list, nrow=weight.shape[0], normalize=True, scale_each=True)
             ax.imshow(grid.permute(1, 2, 0))
             ax.set_title(title)
 
-        fig, axs = plt.subplots(1, 3, figsize=(10, 5))
-        _hist_plot(axs[0], self.model.W.detach().cpu(), "Weight distribution (without tanh)")
-        _hist_plot(axs[1], F.tanh(self.model.W).detach().cpu(), "Weight distribution (with tanh)")
-        _plot_weights(axs[2], self.model.W.detach().cpu(), "Weight matrix")
+        # fig, axs = plt.subplots(1, 3, figsize=(10, 5))
+        # _hist_plot(axs[0], self.model.W.detach().cpu(), "Weight distribution (without tanh)")
+        # _hist_plot(axs[1], F.tanh(self.model.W).detach().cpu(), "Weight distribution (with tanh)")
+        # _plot_weights(axs[2], self.model.W.detach().cpu(), "Weight matrix")
 
-        plt.tight_layout()
-        plt.show()
+        for layer, weight in {"L1": self.model.l1.W, "L2": self.model.l2.W}.items():
+            fig, axs = plt.subplots(1, 2, figsize=(8, 5))
+            _hist_plot(axs[0], weight.detach().cpu(), f"Weight distribution ({layer})")
+            _plot_weights(axs[1], weight[:20, :20, ...].detach().cpu(), f"Example Weight matrix ({layer})")
+            plt.tight_layout()
+            plt.show()
 
     def plot_features_single_sample(self, img: Tensor, features: Tensor):
         """
@@ -299,53 +333,87 @@ class LateralNetwork(pl.LightningModule):
         :param features: The features extracted from the image.
         """
 
-        features, changes, view_idxes = self.forward_steps_through_time(features)
+        def _normalize_image_list(img_list):
+            img_list = torch.stack([i.squeeze() for i in img_list])
+            img_list = (img_list - img_list.min()) / (img_list.max() - img_list.min())
+            img_list = [img_list[i] for i in range(img_list.shape[0])]
+            return img_list
 
-        n_images = min(view_idxes[-1] + 1, 3)
-        max_features_per_time = 10
+        def _plot_input_features(img, features, input_features):
+            plt_images, plt_titles = [], []
+            for view_idx in range(img.shape[0]):
+                plt_images.append(img[view_idx])
+                plt_titles.append(f"Input view {view_idx}")
+                for feature_idx in range(features.shape[1]):
+                    plt_images.append(features[view_idx, feature_idx])
+                    plt_titles.append(f"Features V={view_idx} C={feature_idx}")
+                    plt_images.append(input_features[view_idx, feature_idx])
+                    plt_titles.append(f"Lateral Input V={view_idx} C={feature_idx}")
+            plt_images = _normalize_image_list(plt_images)
+            plot_images(images=plt_images, titles=plt_titles, max_cols=2*features.shape[1] + 1, plot_colorbar=True)
 
-        images, titles = [], []
+        def _plot_lateral_features(lateral_features):
+            # TODO: Too many images and features to plot!
+            max_views = 1
+            for view_idx in range(min(max_views,lateral_features.shape[0])):
+                plt_images = []
+                plt_titles = []
+                for time_idx in range(lateral_features.shape[1]):
+                    for feature_idx in range(lateral_features.shape[2]):
+                        plt_images.append(lateral_features[view_idx, time_idx, feature_idx])
+                        plt_titles.append(f"Lat. L={1 if time_idx==0 else 2} V={view_idx} T={time_idx} C={feature_idx}")
+            plt_images = _normalize_image_list(plt_images)
+            plot_images(images=plt_images, titles=plt_titles, max_cols=lateral_features.shape[2], plot_colorbar=True)
 
-        for img_idx in range(n_images):
-            img_i = img[0, img_idx, ...]  # only use batch idx 0
-            features_i = [f[0] for f, idx in zip(features, view_idxes) if idx == img_idx]
-            images.append(img_i)
-            titles.append(f"Input {img_idx + 1}")
+        input_features, lateral_features, changes = self.forward_steps_through_time(features)
+        input_features = torch.stack(input_features, dim=1)
+        lateral_features = torch.stack([torch.stack(f, dim=1) for f in lateral_features], dim=1)
 
-            for i in range(features_i[0].shape[0]):
-                images.append(features_i[0][i])
-                titles.append(f"Feature {i + 1} (t=0)")
+        # select first sample of the batch
+        img = img[0]
+        features = features[0]
+        input_features = input_features[0]
+        lateral_features = lateral_features[0]
 
-            for t in np.linspace(0, len(features_i) - 1, min(len(features_i), max_features_per_time), dtype=int):
-                z_t = features_i[t]
-                images.append(img_i)
-                titles.append(f"Input {img_idx + 1}")
-                for i in range(z_t.shape[0]):
-                    images.append(z_t[i])
-                    titles.append(f"Feature {i + 1} (t={t})")
+        _plot_input_features(img, features, input_features)
+        _plot_lateral_features(lateral_features)
 
-        plot_images(images=images, titles=titles, max_cols=features[0].shape[1] + 1, vmin=0., vmax=1.)
+        # TODO 2. Plot img together with lateral_features (output of lateral layer, first element is from l1, rest is from l2)
+
+        # n_images = min(view_idxes[-1] + 1, 3)
+        # max_features_per_time = 10
+#
+        # images, titles = [], []
+#
+        # for img_idx in range(n_images):
+        #     img_i = img[0, img_idx, ...]  # only use batch idx 0
+        #     features_i = [f[0] for f, idx in zip(features, view_idxes) if idx == img_idx]
+        #     images.append(img_i)
+        #     titles.append(f"Input {img_idx + 1}")
+#
+        #     for i in range(features_i[0].shape[0]):
+        #         images.append(features_i[0][i])
+        #         titles.append(f"Feature {i + 1} (t=0)")
+#
+        #     for t in np.linspace(0, len(features_i) - 1, min(len(features_i), max_features_per_time), dtype=int):
+        #         z_t = features_i[t]
+        #         images.append(img_i)
+        #         titles.append(f"Input {img_idx + 1}")
+        #         for i in range(z_t.shape[0]):
+        #             images.append(z_t[i])
+        #             titles.append(f"Feature {i + 1} (t={t})")
+#
+        # images2 = torch.stack([i.squeeze() for i in images])
+        # images2 = (images2 - images2.min()) / (images2.max() - images2.min())
+        # images2 = [images2[i] for i in range(images2.shape[0])]
+        # plot_images(images=images2, titles=titles, max_cols=features[0].shape[1] + 1, plot_colorbar=True)
 
     def configure_model(self) -> nn.Module:
         """
         Create the model.
         :return: Model with lateral connections.
         """
-        lm_conf = self.conf["lateral_model"]
-        # return LateralLayerToy(
-        #     self.fabric,
-        #     n_channels=self.conf["feature_extractor"]["out_channels"],
-        #     locality_size=lm_conf['locality_size'],
-        #     alpha=lm_conf['alpha'],
-        #     lr=lm_conf['lr']
-        # )
-
-        return LateralLayerEfficient(
-                self.fabric,
-                n_channels=self.conf["feature_extractor"]["out_channels"],
-                locality_size=lm_conf['locality_size'],
-                lr=lm_conf['lr']
-            )
+        return LateralLayerEfficientNetwork(self.conf, self.fabric)
 
     def on_epoch_end(self):
         print_logs(self.get_logs())

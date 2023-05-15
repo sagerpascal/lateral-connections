@@ -147,8 +147,15 @@ def single_train_epoch(
                          total=len(train_loader),
                          colour="GREEN",
                          desc=f"Train Epoch {epoch + 1}/{config['run']['n_epochs']}"):
-        with torch.no_grad():  # No gradients updates (Hebbian learning)
+
+        # Normalize input and extract features
+        with torch.no_grad():
+            #dd = (2, 3, 4) if len(batch.shape) == 5 else (1, 2, 3)
+            #batch = batch - torch.mean(batch, dim=dd, keepdim=True)
+            #batch = batch / (1e-10 + torch.std(batch, dim=dd, keepdim=True))
             features = feature_extractor(batch)
+            #features = features.repeat(1, 1, 4, 1, 1)
+
         lateral_network.model.train_ = True
         lateral_network.forward_steps_through_time(features)
         lateral_network.model.train_ = False

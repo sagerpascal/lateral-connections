@@ -54,10 +54,20 @@ class StraightLine(Dataset):
         Returns the coordinates of a random straight line (create two random x,y coordinates).
         :return: a Tuple of two Tuples of x,y coordinates.
         """
-        x1 = random.randint(0, self.img_w)
-        y1 = random.randint(0, self.img_h)
-        x2 = random.randint(0, self.img_w)
-        y2 = random.randint(0, self.img_h)
+        # x1 = random.randint(0, self.img_w)
+        # y1 = random.randint(0, self.img_h)
+        # x2 = random.randint(0, self.img_w)
+        # y2 = random.randint(0, self.img_h)
+
+        # encourage longer lines
+        x1 = random.randint(0, self.img_w // 2)
+        y1 = random.randint(0, self.img_h // 2)
+        x2 = random.randint(self.img_w // 2, self.img_w)
+        y2 = random.randint(self.img_h // 2, self.img_h)
+        if random.random() < 0.5:
+            x1, x2 = x2, x1
+        if random.random() < 0.5:
+            y1, y2 = y2, y1
 
         if self.split == 'train':
             # vertical or horizontal line
@@ -66,7 +76,7 @@ class StraightLine(Dataset):
             else:
                 x1 = x2
 
-        return (5, 5), (10, 25)
+        #return (5, 5), (10, 25)
         return (x1, y1), (x2, y2)
 
     def _slightly_change_line_coords(self, coords: Tuple[Tuple[int, int], Tuple[int, int]]) -> Tuple[Tuple[int, int], Tuple[int, int]]:
@@ -152,7 +162,7 @@ def _plot_some_samples():
 
     dataset = StraightLine(split="test", img_h=32, img_w=32, num_images=10, num_aug_versions=4, num_channels=1, transform=transform)
 
-    fig, axs = plt.subplots(10, 5, figsize=(10, 10))
+    fig, axs = plt.subplots(10, 5, figsize=(6, 10))
     for i in range(10):
         img = dataset[i]
         for idx in range(img.shape[0]):
