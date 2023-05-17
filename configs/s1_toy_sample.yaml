@@ -28,7 +28,7 @@ feature_extractor:
 lateral_model:
   locality_size: 2
   alpha: 0.09 #0.905
-  lr: 0.001
-  channels: 64
+  lr: 0.0005
+  channels: 4
   max_timesteps: 5  # 2000
   change_threshold: 0.00001

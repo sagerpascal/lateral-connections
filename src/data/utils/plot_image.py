@@ -50,6 +50,8 @@ def plot_images(
         max_cols: Optional[int] = 5,
         vmin: Optional[Union[float, int]] = None,
         vmax: Optional[Union[float, int]] = None,
+        mask_vmin: Optional[Union[float, int]] = None,
+        mask_vmax: Optional[Union[float, int]] = None,
         plot_colorbar: Optional[bool] = False
 ) -> plt.Figure:
     """
@@ -60,8 +62,10 @@ def plot_images(
     :param show_plot: Show plot.
     :param fig_fp: File path to save figure.
     :param max_cols: Maximum number of columns.
-    :param vmin: Minimum value.
-    :param vmax: Maximum value.
+    :param vmin: Minimum value of the image.
+    :param vmax: Maximum value of the image.
+    :param mask_vmin: Minimum value of the mask.
+    :param mask_vmax: Maximum value of the mask.
     :param plot_colorbar: Plot colorbar.
     :return: matplotlib Figure.
     """
@@ -116,7 +120,7 @@ def plot_images(
             fig.colorbar(im, cax=cax, orientation='vertical')
 
         if masks is not None and mask is not None:
-            ax.imshow(mask, alpha=0.6, cmap='jet', interpolation='none')
+            ax.imshow(mask, alpha=0.6, cmap='jet', interpolation='none', vmin=mask_vmin, vmax=mask_vmax)
 
         if lbl is not None:
             lbl = str(lbl.item()) if isinstance(lbl, torch.Tensor) else lbl

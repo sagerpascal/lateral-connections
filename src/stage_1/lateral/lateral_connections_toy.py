@@ -47,8 +47,8 @@ class LateralLayerEfficient(nn.Module):
         self.locality_size = locality_size
         self.neib_size = 2 * self.locality_size + 1
         self.lr = lr
-        self.k = 10
-        self.thr_rate = 10.
+        self.k = 1 # out_channels  # TODO: Currently no winner-take-all, so k is not used
+        self.thr_rate =  0.05  # 10.
         self.target_rate = self.k / self.out_channels
         self.train_ = True
         self.step = 0
@@ -74,11 +74,11 @@ class LateralLayerEfficient(nn.Module):
         :param ts: The current timestep
         """
         self.ts = ts
-        self.update_k(5 - ts)  # TODO: replace 5 with max. timestep
 
     def update_k(self, k):
         self.k = k
         self.target_rate = self.k / self.out_channels
+        assert False, "Should this be called?"
 
     def forward(self, x: Tensor) -> Tensor:
         self.optimizer.zero_grad()
@@ -89,18 +89,22 @@ class LateralLayerEfficient(nn.Module):
         with torch.no_grad():
             realy = (prelimy - self.b)
 
-            # TODO: How to limit the activations locally?
-            mask = torch.any(x > 0, dim=(1), keepdim=True)  # where something in the input is active -> limit to this range -> BAD?
-            realy = realy * mask  # remove all activations where input was not active
+            # # TODO: How to limit the activations locally?
+            # mask = torch.any(x > 0, dim=(1), keepdim=True)  # where something in the input is active -> limit to
+            # this range -> BAD?
+            # realy = realy * mask  # remove all activations where input was not active
 
             if self.ts in self.prev_activations:
-                realy = .6 * realy + .4 * self.prev_activations[self.ts]
-                self.prev_activations[self.ts] = realy
-            else:
-                self.prev_activations[self.ts] = realy
+                realy = .7 ** self.ts * realy + (1 - .7 ** self.ts) * self.prev_activations[self.ts]
+            if self.ts-1 in self.prev_activations:
+                realy = .7**self.ts * realy + (1-.7**self.ts) * self.prev_activations[self.ts-1]
+            self.prev_activations[self.ts] = realy
 
+            # k winner take all
             tk = torch.topk(realy.data, self.k, dim=1, largest=True)[0]
             realy.data[realy.data < tk.data[:, -1, :, :][:, None, :, :]] = 0
+
+            # binary output
             realy.data = (realy.data > 0).float()
 
         # Then we compute the surrogate output yforgrad, whose gradient computations produce the desired Hebbian output
@@ -208,7 +212,7 @@ class LateralLayerToy(nn.Module):
         return output
 
 
-class LateralLayerEfficientNetwork(nn.Module):
+class LateralLayerEfficientNetwork2L(nn.Module):
     """
     A model with two lateral layers. The first one increases the number of channels from [channels of the feature
     extractor] to [channels of the lateral network]
@@ -251,7 +255,6 @@ class LateralLayerEfficientNetwork(nn.Module):
         self.l1.train_ = train
         self.l2.train_ = train
 
-
     def forward(self, x: Tensor) -> Tuple[List[int], List[Tensor], int]:
         """
         Forward pass over multiple timesteps
@@ -261,17 +264,77 @@ class LateralLayerEfficientNetwork(nn.Module):
         t = 0
 
         self.l1.update_ts(0)
+        self.l1.update_k(5)
 
         changes, features = [], []
         x = self.l1(x)
         features.append(x)
         for t in range(self.conf["lateral_model"]["max_timesteps"]):
             self.l2.update_ts(t)
+            self.l1.update_k(self.conf["lateral_model"]["max_timesteps"] - t)
             x_old = x
             x = self.l2(x)
             change = F.l1_loss(x_old, x).item()
             changes.append(change)
             features.append(x)
+            # if change < self.conf["lateral_model"]["change_threshold"]:
+            #     break
+        return changes, features, t
+
+
+class LateralLayerEfficientNetwork1L(nn.Module):
+    """
+    A model with two lateral layers. The first one increases the number of channels from [channels of the feature
+    extractor] to [channels of the lateral network]
+    """
+
+    def __init__(self, conf: Dict[str, Optional[Any]], fabric: Fabric):
+        """
+        Constructor.
+        :param conf: Configuration dict.
+        :param fabric: Fabric instance.
+        """
+        super().__init__()
+        self.conf = conf
+        self.fabric = fabric
+        lm_conf = self.conf["lateral_model"]
+
+        self.l1 = LateralLayerEfficient(
+            self.fabric,
+            in_channels=2*lm_conf["channels"],
+            out_channels=lm_conf["channels"],
+            locality_size=lm_conf['locality_size'],
+            lr=lm_conf['lr']
+        )
+
+    def new_sample(self):
+        self.l1.new_sample()
+
+    def get_layer_weights(self):
+        return {"L1": self.l1.W}
+
+    def set_train(self, train: bool):
+        self.l1.train_ = train
+
+    def forward(self, x: Tensor) -> Tuple[List[int], List[Tensor], int]:
+        """
+        Forward pass over multiple timesteps
+        :param x_in: The input tensor (extracted features of the image)
+        :return: List of changes, List of features extracted by the lateral layers, number of timesteps
+        """
+        t = 0
+
+        changes, features = [], []
+        x_in = torch.cat([x, torch.zeros_like(x)], dim=1)
+
+        for t in range(self.conf["lateral_model"]["max_timesteps"]):
+            self.l1.update_ts(t)
+            x_old = x_in
+            z = self.l1(x_in)
+            x_in = torch.cat([x, z], dim=1)
+            change = F.l1_loss(x_old, x_in).item()
+            changes.append(change)
+            features.append(z)
             # if change < self.conf["lateral_model"]["change_threshold"]:
             #     break
         return changes, features, t
@@ -388,7 +451,7 @@ class LateralNetwork(pl.LightningModule):
         # _hist_plot(axs[1], F.tanh(self.model.W).detach().cpu(), "Weight distribution (with tanh)")
         # _plot_weights(axs[2], self.model.W.detach().cpu(), "Weight matrix")
 
-        for layer, weight in {"L1": self.model.l1.W, "L2": self.model.l2.W}.items():
+        for layer, weight in self.model.get_layer_weights().items():
             fig, axs = plt.subplots(1, 2, figsize=(8, 5))
             _hist_plot(axs[0], weight.detach().cpu(), f"Weight distribution ({layer})")
             _plot_weights(axs[1], weight[:20, :20, ...].detach().cpu(), f"Example Weight matrix ({layer})")
@@ -404,7 +467,7 @@ class LateralNetwork(pl.LightningModule):
 
         def _normalize_image_list(img_list):
             img_list = torch.stack([i.squeeze() for i in img_list])
-            img_list = (img_list - img_list.min()) / (img_list.max() - img_list.min())
+            img_list = (img_list - img_list.min()) / (img_list.max() - img_list.min() + 1e-9)
             img_list = [img_list[i] for i in range(img_list.shape[0])]
             return img_list
 
@@ -436,16 +499,18 @@ class LateralNetwork(pl.LightningModule):
                         vmin=0, vmax=1)
 
         def _plot_lateral_output(img, lateral_features):
+            raise NotImplementedError("TODO: The oppsoite is active (the background are the features)")
             max_views = 10
             plt_images, plt_titles, plt_masks = [], [], []
             for view_idx in range(min(max_views, lateral_features.shape[0])):
                 plt_images.extend([img[view_idx], img[view_idx]])
                 plt_titles.extend([f"Input view {view_idx}", f"Extracted Features {view_idx}"])
-                torch.argmax(lateral_features[view_idx, -1], dim=0)
-                plt_masks.extend([None, torch.argmax(lateral_features[view_idx, -1], dim=0)])
+                background = torch.all((lateral_features[view_idx, -1] == 0), dim=0)
+                foreground = torch.argmax(lateral_features[view_idx, -1], dim=0)
+                calc_mask = torch.where(~background, foreground + 1, 0.)
+                plt_masks.extend([None, calc_mask])
             plot_images(images=plt_images, titles=plt_titles, masks=plt_masks, max_cols=2, plot_colorbar=True,
-                        vmin=0, vmax=1)
-
+                        vmin=0, vmax=1, mask_vmin=0, mask_vmax=lateral_features.shape[2] + 1)
 
         self.model.set_train(False)
         with torch.no_grad():
@@ -498,7 +563,7 @@ class LateralNetwork(pl.LightningModule):
         Create the model.
         :return: Model with lateral connections.
         """
-        return LateralLayerEfficientNetwork(self.conf, self.fabric)
+        return LateralLayerEfficientNetwork1L(self.conf, self.fabric)
 
     def on_epoch_end(self):
         print_logs(self.get_logs())
