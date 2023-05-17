@@ -98,7 +98,7 @@ def plot_images(
         if masks is not None:
             mask = masks[i]
             if isinstance(mask, torch.Tensor):
-                mask = transform(mask)
+                mask = mask.detach().squeeze().cpu().numpy()   # transform(mask)
             if isinstance(mask, Image):
                 mask = np.array(mask)
 
@@ -115,7 +115,7 @@ def plot_images(
             cax = divider.append_axes('right', size='5%', pad=0.05)
             fig.colorbar(im, cax=cax, orientation='vertical')
 
-        if masks is not None:
+        if masks is not None and mask is not None:
             ax.imshow(mask, alpha=0.6, cmap='jet', interpolation='none')
 
         if lbl is not None:

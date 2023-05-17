@@ -26,7 +26,7 @@ feature_extractor:
   out_channels: 4
 
 lateral_model:
-  locality_size: 5
+  locality_size: 2
   alpha: 0.09 #0.905
   lr: 0.001
   channels: 64

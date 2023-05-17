@@ -156,9 +156,9 @@ def single_train_epoch(
             features = feature_extractor(batch)
             #features = features.repeat(1, 1, 4, 1, 1)
 
-        lateral_network.model.train_ = True
-        lateral_network.forward_steps_through_time(features)
-        lateral_network.model.train_ = False
+        lateral_network.model.set_train(True)
+        lateral_network.forward_steps_multiple_views_through_time(features)
+        lateral_network.model.set_train(False)
 
         # Plot sample
         if i == (len(train_loader) - 1) and config['run']['visualize_plots']:
