@@ -112,7 +112,9 @@ class LateralLayerEfficient(nn.Module):
         # Then we compute the surrogate output yforgrad, whose gradient computations produce the desired Hebbian output
         # Note: We must not include thresholds here, as this would not produce the expected gradient expressions. The
         # actual values will come from realy, which does include thresholding.
-        yforgrad = prelimy - 1 / 2 * torch.sum(self.W * self.W, dim=(1, 2, 3))[None, :, None, None]
+        yforgrad = prelimy - 1 / 2 * torch.sum(self.W * self.W, dim=(1, 2, 3))[None, :, None, None] # Instar rule, dw ~= y(x-w)
+        # yforgrad = prelimy - 1/2 * torch.sum(self.W * self.W, dim=(1,2,3))[None,:, None, None] * realy.data # Oja's rule, dw ~= y(x-yw)
+        # yforgrad = prelimy
         yforgrad.data = realy.data  # We force the value of yforgrad to be the "correct" y
 
         loss = torch.sum(-1 / 2 * yforgrad * yforgrad)
@@ -477,7 +479,7 @@ class LateralNetwork(pl.LightningModule):
                         vmin=0, vmax=1)
 
         def _plot_lateral_activation_map(lateral_features):
-            max_views = 2
+            max_views = 3
             plt_images, plt_titles = [], []
             for view_idx in range(min(max_views, lateral_features.shape[0])):
                 for time_idx in range(lateral_features.shape[1]):
@@ -511,15 +513,16 @@ class LateralNetwork(pl.LightningModule):
         input_features = torch.stack(input_features, dim=1)
         lateral_features = torch.stack([torch.stack(f, dim=1) for f in lateral_features], dim=1)
 
-        # select first sample of the batch
-        img = img[0]
-        features = features[0]
-        input_features = input_features[0]
-        lateral_features = lateral_features[0]
+        # select sample of the batch
+        for i in range(min(3, img.shape[0])):
+            img_i = img[i]
+            features_i = features[i]
+            input_features_i = input_features[i]
+            lateral_features_i = lateral_features[i]
 
-        # _plot_input_features(img, features, input_features)
-        _plot_lateral_activation_map(lateral_features)
-        _plot_lateral_output(img, lateral_features)
+            # _plot_input_features(img_i, features_i, input_features_i)
+            _plot_lateral_activation_map(lateral_features_i)
+            _plot_lateral_output(img_i, lateral_features_i)
 
 
     def create_activations_video(self, images: List[Tensor], features: List[List[Tensor]], activations: List[List[List[Tensor]]]):
@@ -541,7 +544,6 @@ class LateralNetwork(pl.LightningModule):
             activations_img = activations[img_idx]
 
             for batch_idx in range(img.shape[0]):
-                images_fp = []
 
                 for view_idx in range(len(features_img)):
                     img_view = img[batch_idx, view_idx]

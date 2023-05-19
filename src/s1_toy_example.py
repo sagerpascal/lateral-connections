@@ -228,8 +228,8 @@ def main():
     """
     Run the model: Create modules, extract features from images and run the model leveraging lateral connections.
     """
-    print_start("Starting python script 's1_lateral_connections.py'...",
-                title="Training S1: Lateral Connections")
+    print_start("Starting python script 's1_toy_example.py'...",
+                title="Training S1: Lateral Connections Toy Example")
     config = configure()
     fabric = setup_fabric()
     train_loader, test_loader = setup_dataloader(config, fabric)
