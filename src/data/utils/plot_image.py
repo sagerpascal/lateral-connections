@@ -45,6 +45,7 @@ def plot_images(
         images: List[Any],
         masks: Optional[List[Any]] = None,
         titles: Optional[List[Any]] = None,
+        suptitle: Optional[str] = None,
         show_plot: bool = True,
         fig_fp: Optional[str] = None,
         max_cols: Optional[int] = 5,
@@ -59,6 +60,7 @@ def plot_images(
     :param images: A list of images.
     :param masks: A list of masks that are overlaid on the images.
     :param titles: A list of titles or labels.
+    :param suptitle: Overall title.
     :param show_plot: Show plot.
     :param fig_fp: File path to save figure.
     :param max_cols: Maximum number of columns.
@@ -88,7 +90,7 @@ def plot_images(
             titles = [titles]
 
     cols = min(max_cols, len(images))
-    rows = len(images) // cols + 1
+    rows = int(np.ceil(len(images) / cols))
     fig, axes = plt.subplots(rows, cols, figsize=(cols * 2, rows * 2))
     transform = T.ToPILImage()
 
@@ -127,11 +129,15 @@ def plot_images(
             ax.set_title(lbl)
         ax.set(xticklabels=[], yticklabels=[], xticks=[], yticks=[])
 
+    if suptitle is not None:
+        fig.suptitle(suptitle)
     if fig_fp is not None:
         plt.savefig(fig_fp)
     plt.tight_layout()
     if show_plot:
         plt.show()
+    else:
+        plt.close()
     return fig
 
 
