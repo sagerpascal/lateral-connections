@@ -78,12 +78,12 @@ straightline:
     num_aug_versions: 10
   valid_dataset_params:
     split: "val"
-    num_images: 20
+    num_images: 3
     num_aug_versions: 10
   test_dataset_params:
     split: "test"
-    num_images: 20
-    num_aug_versions: 20
+    num_images: 3
+    num_aug_versions: 10
 
 augmentation_v1:
   aug1:

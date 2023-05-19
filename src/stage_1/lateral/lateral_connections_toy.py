@@ -1,3 +1,5 @@
+from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
@@ -12,8 +14,8 @@ from torch.autograd import Variable
 from torchvision import utils
 
 from data import plot_images
-from tools import AverageMeter
-from utils import print_logs
+from tools import AverageMeter, bin2dec
+from utils import create_video_from_images_ffmpeg, print_logs
 
 
 # TODO: In jedem timestep muss ursprüngliche Features berücksichtigt werden!
@@ -446,11 +448,6 @@ class LateralNetwork(pl.LightningModule):
             ax.imshow(grid.permute(1, 2, 0))
             ax.set_title(title)
 
-        # fig, axs = plt.subplots(1, 3, figsize=(10, 5))
-        # _hist_plot(axs[0], self.model.W.detach().cpu(), "Weight distribution (without tanh)")
-        # _hist_plot(axs[1], F.tanh(self.model.W).detach().cpu(), "Weight distribution (with tanh)")
-        # _plot_weights(axs[2], self.model.W.detach().cpu(), "Weight matrix")
-
         for layer, weight in self.model.get_layer_weights().items():
             fig, axs = plt.subplots(1, 2, figsize=(8, 5))
             _hist_plot(axs[0], weight.detach().cpu(), f"Weight distribution ({layer})")
@@ -465,12 +462,6 @@ class LateralNetwork(pl.LightningModule):
         :param features: The features extracted from the image.
         """
 
-        def _normalize_image_list(img_list):
-            img_list = torch.stack([i.squeeze() for i in img_list])
-            img_list = (img_list - img_list.min()) / (img_list.max() - img_list.min() + 1e-9)
-            img_list = [img_list[i] for i in range(img_list.shape[0])]
-            return img_list
-
         def _plot_input_features(img, features, input_features):
             plt_images, plt_titles = [], []
             for view_idx in range(img.shape[0]):
@@ -481,12 +472,12 @@ class LateralNetwork(pl.LightningModule):
                     plt_titles.append(f"Features V={view_idx} C={feature_idx}")
                     plt_images.append(input_features[view_idx, feature_idx])
                     plt_titles.append(f"Lateral Input V={view_idx} C={feature_idx}")
-            plt_images = _normalize_image_list(plt_images)
+            plt_images = self._normalize_image_list(plt_images)
             plot_images(images=plt_images, titles=plt_titles, max_cols=2 * features.shape[1] + 1, plot_colorbar=True,
                         vmin=0, vmax=1)
 
         def _plot_lateral_activation_map(lateral_features):
-            max_views = 1
+            max_views = 2
             plt_images, plt_titles = [], []
             for view_idx in range(min(max_views, lateral_features.shape[0])):
                 for time_idx in range(lateral_features.shape[1]):
@@ -494,12 +485,12 @@ class LateralNetwork(pl.LightningModule):
                         plt_images.append(lateral_features[view_idx, time_idx, feature_idx])
                         plt_titles.append(
                             f"Lat. L={1 if time_idx == 0 else 2} V={view_idx} T={time_idx} C={feature_idx}")
-            plt_images = _normalize_image_list(plt_images)
+            plt_images = self._normalize_image_list(plt_images)
             plot_images(images=plt_images, titles=plt_titles, max_cols=lateral_features.shape[2], plot_colorbar=True,
                         vmin=0, vmax=1)
 
         def _plot_lateral_output(img, lateral_features):
-            raise NotImplementedError("TODO: The oppsoite is active (the background are the features)")
+            # raise NotImplementedError("TODO: The oppsoite is active (the background are the features)")
             max_views = 10
             plt_images, plt_titles, plt_masks = [], [], []
             for view_idx in range(min(max_views, lateral_features.shape[0])):
@@ -509,6 +500,7 @@ class LateralNetwork(pl.LightningModule):
                 foreground = torch.argmax(lateral_features[view_idx, -1], dim=0)
                 calc_mask = torch.where(~background, foreground + 1, 0.)
                 plt_masks.extend([None, calc_mask])
+            plt_images = self._normalize_image_list(plt_images)
             plot_images(images=plt_images, titles=plt_titles, masks=plt_masks, max_cols=2, plot_colorbar=True,
                         vmin=0, vmax=1, mask_vmin=0, mask_vmax=lateral_features.shape[2] + 1)
 
@@ -525,38 +517,56 @@ class LateralNetwork(pl.LightningModule):
         input_features = input_features[0]
         lateral_features = lateral_features[0]
 
-        _plot_input_features(img, features, input_features)
+        # _plot_input_features(img, features, input_features)
         _plot_lateral_activation_map(lateral_features)
         _plot_lateral_output(img, lateral_features)
 
-        # n_images = min(view_idxes[-1] + 1, 3)
-        # max_features_per_time = 10
 
-    #
-    # images, titles = [], []
-    #
-    # for img_idx in range(n_images):
-    #     img_i = img[0, img_idx, ...]  # only use batch idx 0
-    #     features_i = [f[0] for f, idx in zip(features, view_idxes) if idx == img_idx]
-    #     images.append(img_i)
-    #     titles.append(f"Input {img_idx + 1}")
-    #
-    #     for i in range(features_i[0].shape[0]):
-    #         images.append(features_i[0][i])
-    #         titles.append(f"Feature {i + 1} (t=0)")
-    #
-    #     for t in np.linspace(0, len(features_i) - 1, min(len(features_i), max_features_per_time), dtype=int):
-    #         z_t = features_i[t]
-    #         images.append(img_i)
-    #         titles.append(f"Input {img_idx + 1}")
-    #         for i in range(z_t.shape[0]):
-    #             images.append(z_t[i])
-    #             titles.append(f"Feature {i + 1} (t={t})")
-    #
-    # images2 = torch.stack([i.squeeze() for i in images])
-    # images2 = (images2 - images2.min()) / (images2.max() - images2.min())
-    # images2 = [images2[i] for i in range(images2.shape[0])]
-    # plot_images(images=images2, titles=titles, max_cols=features[0].shape[1] + 1, plot_colorbar=True)
+    def create_activations_video(self, images: List[Tensor], features: List[List[Tensor]], activations: List[List[List[Tensor]]]):
+        """
+        Create a video of the activations.
+        :param images: The original images.
+        :param features: The features extracted from the images.
+        :param activations: The activations after the lateral connections.
+        """
+        folder = Path("../tmp") / "video_toys"
+        if not folder.exists():
+            folder.mkdir(parents=True)
+
+        c = 0
+
+        for img_idx in range(len(images)):
+            img = images[img_idx]
+            features_img = features[img_idx]
+            activations_img = activations[img_idx]
+
+            for batch_idx in range(img.shape[0]):
+                images_fp = []
+
+                for view_idx in range(len(features_img)):
+                    img_view = img[batch_idx, view_idx]
+                    features_view = features_img[view_idx][batch_idx]
+                    activations_view = activations_img[view_idx]
+
+                    for time_idx in range(len(activations_view)):
+                        activations_view_time = activations_view[time_idx][batch_idx]
+                        features_view_dec = bin2dec(features_view.permute(1, 2, 0))
+                        activations_view_time_dec = bin2dec(activations_view_time.permute(1, 2, 0))
+
+                        plot_images(images=[img_view]*3,
+                                    show_plot=False,
+                                    fig_fp=str(folder / f"{c:04d}.png"),
+                                    titles=["Image", "Inp. Features", "Activations"],
+                                    suptitle=f"Image {img_idx}.{batch_idx}, View {view_idx}, Time {time_idx}",
+                                    masks=[None, features_view_dec, activations_view_time_dec],
+                                    max_cols=3, plot_colorbar=True, vmin=0, vmax=1, mask_vmin=0, mask_vmax=2**4)
+                        c += 1
+
+                create_video_from_images_ffmpeg(folder, f"{folder / datetime.now().strftime('%Y-%d-%m_%H-%M-%S')}_{img_idx}_{batch_idx}.mp4")
+
+                for f in folder.glob("*.png"):
+                    f.unlink()
+
 
     def configure_model(self) -> nn.Module:
         """
@@ -567,3 +577,9 @@ class LateralNetwork(pl.LightningModule):
 
     def on_epoch_end(self):
         print_logs(self.get_logs())
+
+    def _normalize_image_list(self, img_list):
+        img_list = torch.stack([i.squeeze() for i in img_list])
+        img_list = (img_list - img_list.min()) / (img_list.max() - img_list.min() + 1e-9)
+        img_list = [img_list[i] for i in range(img_list.shape[0])]
+        return img_list

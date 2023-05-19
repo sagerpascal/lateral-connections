@@ -143,28 +143,24 @@ def single_train_epoch(
         :param train_loader: Test set dataloader.
         :param epoch: Current epoch.
         """
+    lateral_network.model.set_train(True)
     for i, batch in tqdm(enumerate(train_loader),
                          total=len(train_loader),
                          colour="GREEN",
                          desc=f"Train Epoch {epoch + 1}/{config['run']['n_epochs']}"):
 
-        # Normalize input and extract features
         with torch.no_grad():
-            #dd = (2, 3, 4) if len(batch.shape) == 5 else (1, 2, 3)
-            #batch = batch - torch.mean(batch, dim=dd, keepdim=True)
-            #batch = batch / (1e-10 + torch.std(batch, dim=dd, keepdim=True))
             features = feature_extractor(batch)
-            #features = features.repeat(1, 1, 4, 1, 1)
-
-        lateral_network.model.set_train(True)
         lateral_network.forward_steps_multiple_views_through_time(features)
-        lateral_network.model.set_train(False)
+
 
         # Plot sample
         if i == (len(train_loader) - 1) and config['run']['visualize_plots']:
+            lateral_network.model.set_train(False)
             lateral_network.plot_features_single_sample(batch, features)
             lateral_network.plot_model_weights()
 
+    lateral_network.model.set_train(False)
 
 def single_eval_epoch(
         config: Dict[str, Optional[Any]],
@@ -181,7 +177,20 @@ def single_eval_epoch(
     :param test_loader: Test set dataloader.
     :param epoch: Current epoch.
     """
-    pass
+    lateral_network.model.set_train(False)
+    plt_img, plt_features, plt_activations = [], [], []
+    for i, batch in tqdm(enumerate(test_loader),
+                         total=len(test_loader),
+                         colour="GREEN",
+                         desc=f"Testing Epoch {epoch + 1}/{config['run']['n_epochs']}"):
+        with torch.no_grad():
+            features = feature_extractor(batch)
+            input_features, lateral_features, changes = lateral_network.forward_steps_multiple_views_through_time(features)
+            plt_img.append(batch)
+            plt_features.append(input_features)
+            plt_activations.append(lateral_features)
+
+    lateral_network.create_activations_video(plt_img, plt_features, plt_activations)
 
 
 def train(
@@ -201,6 +210,7 @@ def train(
     for epoch in range(start_epoch, config['run']['n_epochs']):
         config['run']['current_epoch'] = epoch
         single_train_epoch(config, feature_extractor, lateral_network, train_loader, epoch)
+        single_eval_epoch(config, feature_extractor, lateral_network, test_loader, epoch)
         lateral_network.on_epoch_end()
 
 
