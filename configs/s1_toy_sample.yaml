@@ -6,9 +6,11 @@ dataset:
   num_workers: 0
 
 run:
-  n_epochs: 100
+  n_epochs: 10
   current_epoch: 0
-  visualize_plots: False
+  plots:
+    enable: True
+    only_last_epoch: True
 
 
 logging:

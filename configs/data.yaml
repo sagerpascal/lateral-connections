@@ -74,15 +74,20 @@ straightline:
   img_height: 32
   train_dataset_params:
     split: "train"
-    num_images: 1000
+    vertical_horizontal_only: True
+    num_images: 50000
     num_aug_versions: 5
   valid_dataset_params:
     split: "val"
-    num_images: 3
+    vertical_horizontal_only: True
+    fixed_lines_eval_test: True
+    num_images: 4
     num_aug_versions: 5
   test_dataset_params:
     split: "test"
-    num_images: 3
+    vertical_horizontal_only: True
+    fixed_lines_eval_test: True
+    num_images: 4
     num_aug_versions: 5
 
 augmentation_v1:

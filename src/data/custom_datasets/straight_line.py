@@ -6,6 +6,7 @@ from PIL import Image, ImageDraw
 from torch.utils.data import Dataset
 import torchvision.transforms as T
 
+
 class StraightLine(Dataset):
 
     def __init__(self,
@@ -15,6 +16,8 @@ class StraightLine(Dataset):
                  num_images: Optional[int] = 50,
                  num_aug_versions: Optional[int] = 0,
                  num_channels: Literal[1, 3] = 1,
+                 vertical_horizontal_only: Optional[bool] = False,
+                 fixed_lines_eval_test: Optional[bool] = False,
                  transform: Optional[Callable] = None):
         """
         Dataset that generates images with a straight line.
@@ -23,6 +26,8 @@ class StraightLine(Dataset):
         :param num_images: Number of images to generate.
         :param num_aug_versions: Number of similar versions of each image to generate.
         :param num_channels: Number of channels of the images (1 for grayscale, 3 for RGB).
+        :param vertical_horizontal_only: Whether to only generate vertical and horizontal lines.
+        :param fixed_lines_eval_test: Whether to use fixed lines for the evaluation and test sets.
         :param transform: Optional transform to be applied on a sample.
         """
         super().__init__()
@@ -35,6 +40,8 @@ class StraightLine(Dataset):
         self.num_images = num_images
         self.num_aug_versions = num_aug_versions
         self.num_channels = num_channels
+        self.vertical_horizontal_only = vertical_horizontal_only
+        self.fixed_lines_eval_test = fixed_lines_eval_test
         self.transform = transform
 
         if self.transform is None:
@@ -49,9 +56,10 @@ class StraightLine(Dataset):
         """
         return self.num_images
 
-    def _get_random_line_coords(self) -> Tuple[Tuple[int, int], Tuple[int, int]]:
+    def _get_random_line_coords(self, idx: int) -> Tuple[Tuple[int, int], Tuple[int, int]]:
         """
         Returns the coordinates of a random straight line (create two random x,y coordinates).
+        :param idx: Index of the image.
         :return: a Tuple of two Tuples of x,y coordinates.
         """
         # x1 = random.randint(0, self.img_w)
@@ -69,17 +77,26 @@ class StraightLine(Dataset):
         if random.random() < 0.5:
             y1, y2 = y2, y1
 
-        if self.split == 'train':
-            # vertical or horizontal line
+        if self.vertical_horizontal_only:
             if random.random() < 0.5:
                 y1 = y2
             else:
                 x1 = x2
 
-        #return (5, 5), (10, 25)
+        if self.fixed_lines_eval_test and (self.split == 'val' or self.split == 'test'):
+            if idx == 0:
+                x1, x2, y1, y2 = self.img_w // 2, self.img_w // 2, 5, self.img_h - 5
+            elif idx == 1:
+                x1, x2, y1, y2 = 5, self.img_w - 5, self.img_h // 2, self.img_h // 2
+            elif idx == 2:
+                x1, x2, y1, y2 = 5, self.img_w - 5, 5, self.img_h - 5
+            elif idx == 3:
+                x1, x2, y1, y2 = 5, self.img_w - 5, self.img_h - 5, 5
+
         return (x1, y1), (x2, y2)
 
-    def _slightly_change_line_coords(self, coords: Tuple[Tuple[int, int], Tuple[int, int]]) -> Tuple[Tuple[int, int], Tuple[int, int]]:
+    def _slightly_change_line_coords(self, coords: Tuple[Tuple[int, int], Tuple[int, int]]
+                                     ) -> Tuple[Tuple[int, int], Tuple[int, int]]:
         """
         Slightly changes the coordinates of a straight line.
         :param coords: The coordinates of the straight line.
@@ -139,7 +156,7 @@ class StraightLine(Dataset):
         :param idx: Index of the image to return (has no effect)
         :return: The image
         """
-        line_coords = self._get_random_line_coords()
+        line_coords = self._get_random_line_coords(idx)
 
         images = [self._create_image(line_coords)]
         for i in range(self.num_aug_versions):
@@ -160,7 +177,8 @@ def _plot_some_samples():
         transforms.ToTensor(),
     ])
 
-    dataset = StraightLine(split="test", img_h=32, img_w=32, num_images=10, num_aug_versions=4, num_channels=1, transform=transform)
+    dataset = StraightLine(split="test", img_h=32, img_w=32, num_images=10, num_aug_versions=4, num_channels=1,
+                           transform=transform)
 
     fig, axs = plt.subplots(10, 5, figsize=(6, 10))
     for i in range(10):

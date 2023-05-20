@@ -49,8 +49,8 @@ class LateralLayerEfficient(nn.Module):
         self.locality_size = locality_size
         self.neib_size = 2 * self.locality_size + 1
         self.lr = lr
-        self.k = 1 # out_channels  # TODO: Currently no winner-take-all, so k is not used
-        self.thr_rate =  0.05  # 10.
+        self.k = 1  # out_channels  # TODO: Currently no winner-take-all, so k is not used
+        self.thr_rate = 0.05  # 10.
         self.target_rate = self.k / self.out_channels
         self.train_ = True
         self.step = 0
@@ -91,16 +91,14 @@ class LateralLayerEfficient(nn.Module):
         with torch.no_grad():
             realy = (prelimy - self.b)
 
-            # # TODO: How to limit the activations locally?
-            # mask = torch.any(x > 0, dim=(1), keepdim=True)  # where something in the input is active -> limit to
-            # this range -> BAD?
-            # realy = realy * mask  # remove all activations where input was not active
-
-            if self.ts in self.prev_activations:
-                realy = .7 ** self.ts * realy + (1 - .7 ** self.ts) * self.prev_activations[self.ts]
+            # if self.ts in self.prev_activations:
+            #     realy = .4 * realy + (1 - .4) * self.prev_activations[self.ts]
             if self.ts-1 in self.prev_activations:
-                realy = .7**self.ts * realy + (1-.7**self.ts) * self.prev_activations[self.ts-1]
+                realy = .5 * realy + (1-.5) * self.prev_activations[self.ts-1]
             self.prev_activations[self.ts] = realy
+
+            # TODO: In order that the channels have more distinct features, we could limit the number of activations per channel to 1.5x the input activations of the same channel?
+            # TODO: We could use different Filters, e.g. some layers can access only some input filters (number of combinations: 2^in_channels)
 
             # k winner take all
             tk = torch.topk(realy.data, self.k, dim=1, largest=True)[0]
@@ -112,7 +110,7 @@ class LateralLayerEfficient(nn.Module):
         # Then we compute the surrogate output yforgrad, whose gradient computations produce the desired Hebbian output
         # Note: We must not include thresholds here, as this would not produce the expected gradient expressions. The
         # actual values will come from realy, which does include thresholding.
-        yforgrad = prelimy - 1 / 2 * torch.sum(self.W * self.W, dim=(1, 2, 3))[None, :, None, None] # Instar rule, dw ~= y(x-w)
+        yforgrad = prelimy - 1 / 2 * torch.sum(self.W * self.W, dim=(1, 2, 3))[None, :, None, None]  # Instar rule, dw ~= y(x-w)
         # yforgrad = prelimy - 1/2 * torch.sum(self.W * self.W, dim=(1,2,3))[None,:, None, None] * realy.data # Oja's rule, dw ~= y(x-yw)
         # yforgrad = prelimy
         yforgrad.data = realy.data  # We force the value of yforgrad to be the "correct" y
@@ -136,156 +134,6 @@ class LateralLayerEfficient(nn.Module):
         return realy.detach()
 
 
-class LateralLayerToy(nn.Module):
-
-    def __init__(self,
-                 fabric: Fabric,
-                 n_channels: int,
-                 locality_size: Optional[int] = 5,
-                 alpha: Optional[float] = 0.9,
-                 lr: Optional[float] = 0.01,
-                 ):
-        """
-        Lateral Layer trained with Hebbian Learning. The input and output of this layer are binary.
-        :param fabric: Fabric instance.
-        :param n_channels: Number of channels in the input and output.
-        :param locality_size: Size of the locality, i.e. how many neurons are connected to each other. For 
-        example, if locality_size = 2, then each neuron is connected to 5 neurons on each side of it.
-        :param alpha: Factor by which the activation probability is normalized (lower values lead to higher
-        activation probabilities).
-        :param lr: Learning rate.
-        """
-        super().__init__()
-        self.n_channels = n_channels
-        self.locality_size = locality_size
-        self.alpha = alpha
-        self.lr = lr
-        # weight has the shape (output_channels, input_channels, kernel_height, kernel_width)
-        self.W = torch.rand((self.n_channels, self.n_channels, 2 * self.locality_size + 1, 2 * self.locality_size + 1),
-                            dtype=torch.float32, requires_grad=False).to(fabric.device)
-        self.train_ = True
-        self.step = 0
-
-    def update_weights(self, input: Tensor, output: Tensor, probabilities: Tensor):
-        """
-        Updates the weights of the layer (i.e. a training step).
-        :param input: Layer input.
-        :param output: Layer output.
-        :param probabilities: Activation probabilities of the output.
-        """
-        self.step += 1
-        patch_size = self.locality_size * 2 + 1
-
-        prob_shaped = probabilities.reshape(probabilities.shape[:2] + (-1,))
-        winner_val, winner_idx = torch.topk(prob_shaped, int(32 * 32 * 0.01), dim=(-1))
-        winner_mask = torch.zeros_like(prob_shaped).scatter(-1, winner_idx, torch.ones_like(winner_val)).reshape(
-            probabilities.shape)
-
-        input_masked = input * winner_mask
-        output_masked = output * winner_mask
-
-        input_patches = F.pad(input_masked,
-                              (self.locality_size, self.locality_size, self.locality_size, self.locality_size)) \
-            .unfold(2, patch_size, 1).unfold(3, patch_size, 1).unsqueeze(2)
-        output_reshaped = output_masked.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, 1, 1, patch_size,
-                                                                           patch_size).unsqueeze(1)
-        pos_co_activation = torch.matmul(input_patches, output_reshaped)
-        neg_co_activation = torch.matmul(input_patches, output_reshaped - 1) + torch.matmul(input_patches - 1,
-                                                                                            output_reshaped)
-
-        update = torch.mean(pos_co_activation + neg_co_activation, dim=(0, 3, 4))
-        self.W += self.lr * (
-            update)  # - 10 * self.W * torch.mean(output_reshaped, dim=(0, 3, 4)).permute(1, 0, 2, 3) ** 2)
-
-    def forward(self, input: Tensor) -> Tensor:
-        """
-        Forward pass through the layer.
-        :param input: Layer input.
-        :return: Layer output.
-        """
-        weight = F.tanh(self.W)
-        a = F.conv2d(input, weight, groups=4, padding="same")  # TODO: check group parameter
-        z = torch.sum(weight, dim=(1, 2, 3))
-        p = a / (self.alpha * z.view(1, self.n_channels, 1, 1))
-        # output = torch.bernoulli(p.clip(0., 1.))
-        output = torch.where(p > 0.5, 1., 0.)
-
-        if self.train_:
-            self.update_weights(input, output, p)
-
-        return output
-
-
-class LateralLayerEfficientNetwork2L(nn.Module):
-    """
-    A model with two lateral layers. The first one increases the number of channels from [channels of the feature
-    extractor] to [channels of the lateral network]
-    """
-
-    def __init__(self, conf: Dict[str, Optional[Any]], fabric: Fabric):
-        """
-        Constructor.
-        :param conf: Configuration dict.
-        :param fabric: Fabric instance.
-        """
-        super().__init__()
-        self.conf = conf
-        self.fabric = fabric
-        lm_conf = self.conf["lateral_model"]
-
-        self.l1 = LateralLayerEfficient(
-            self.fabric,
-            in_channels=self.conf["feature_extractor"]["out_channels"],
-            out_channels=lm_conf["channels"],
-            locality_size=lm_conf['locality_size'],
-            lr=lm_conf['lr']
-        )
-        self.l2 = LateralLayerEfficient(
-            self.fabric,
-            in_channels=lm_conf["channels"],
-            out_channels=lm_conf["channels"],
-            locality_size=lm_conf['locality_size'],
-            lr=lm_conf['lr']
-        )
-
-    def new_sample(self):
-        self.l1.new_sample()
-        self.l2.new_sample()
-
-    def get_layer_weights(self):
-        return {"L1": self.l1.W, "L2": self.l2.W}
-
-    def set_train(self, train: bool):
-        self.l1.train_ = train
-        self.l2.train_ = train
-
-    def forward(self, x: Tensor) -> Tuple[List[int], List[Tensor], int]:
-        """
-        Forward pass over multiple timesteps
-        :param x: The input tensor (extracted features of the image)
-        :return: List of changes, List of features extracted by the lateral layers, number of timesteps
-        """
-        t = 0
-
-        self.l1.update_ts(0)
-        self.l1.update_k(5)
-
-        changes, features = [], []
-        x = self.l1(x)
-        features.append(x)
-        for t in range(self.conf["lateral_model"]["max_timesteps"]):
-            self.l2.update_ts(t)
-            self.l1.update_k(self.conf["lateral_model"]["max_timesteps"] - t)
-            x_old = x
-            x = self.l2(x)
-            change = F.l1_loss(x_old, x).item()
-            changes.append(change)
-            features.append(x)
-            # if change < self.conf["lateral_model"]["change_threshold"]:
-            #     break
-        return changes, features, t
-
-
 class LateralLayerEfficientNetwork1L(nn.Module):
     """
     A model with two lateral layers. The first one increases the number of channels from [channels of the feature
@@ -301,11 +149,13 @@ class LateralLayerEfficientNetwork1L(nn.Module):
         super().__init__()
         self.conf = conf
         self.fabric = fabric
+        self.concat_input = True
         lm_conf = self.conf["lateral_model"]
+        in_channels = self.conf["feature_extractor"]["out_channels"]
 
         self.l1 = LateralLayerEfficient(
             self.fabric,
-            in_channels=2*lm_conf["channels"],
+            in_channels= in_channels + lm_conf["channels"] if self.concat_input else in_channels,
             out_channels=lm_conf["channels"],
             locality_size=lm_conf['locality_size'],
             lr=lm_conf['lr']
@@ -320,28 +170,28 @@ class LateralLayerEfficientNetwork1L(nn.Module):
     def set_train(self, train: bool):
         self.l1.train_ = train
 
-    def forward(self, x: Tensor) -> Tuple[List[int], List[Tensor], int]:
+    def forward(self, x: Tensor) -> Tuple[List[int], Tensor, int]:
         """
         Forward pass over multiple timesteps
         :param x_in: The input tensor (extracted features of the image)
-        :return: List of changes, List of features extracted by the lateral layers, number of timesteps
+        :return: List of changes, Features extracted by the lateral layers, number of timesteps
         """
         t = 0
 
         changes, features = [], []
-        x_in = torch.cat([x, torch.zeros_like(x)], dim=1)
+        x_in = torch.cat([x, torch.zeros_like(x)], dim=1) if self.concat_input else x
 
         for t in range(self.conf["lateral_model"]["max_timesteps"]):
             self.l1.update_ts(t)
             x_old = x_in
             z = self.l1(x_in)
-            x_in = torch.cat([x, z], dim=1)
+            x_in = torch.cat([x, z], dim=1) if self.concat_input else z
             change = F.l1_loss(x_old, x_in).item()
             changes.append(change)
             features.append(z)
             # if change < self.conf["lateral_model"]["change_threshold"]:
             #     break
-        return changes, features, t
+        return changes, torch.stack(features, dim=1), t
 
 
 class LateralNetwork(pl.LightningModule):
@@ -361,11 +211,11 @@ class LateralNetwork(pl.LightningModule):
         self.model = self.configure_model()
         self.avg_meter_t = AverageMeter()
 
-    def forward(self, x: Tensor) -> Tuple[List[int], List[Tensor], int]:
+    def forward(self, x: Tensor) -> Tuple[List[int], Tensor, int]:
         """
         Forward pass through the model.
         :param x: Input image.
-        :return:  List of changes, List of features extracted by the lateral layers, number of timesteps
+        :return:  List of changes, Features extracted by the lateral layers, number of timesteps
         """
         return self.model(x)
 
@@ -396,7 +246,7 @@ class LateralNetwork(pl.LightningModule):
             lateral_features.append(features_)
             self.avg_meter_t(t)
 
-        return input_features, lateral_features, changes
+        return torch.stack(input_features, dim=1), torch.stack(lateral_features, dim=1), changes
 
     def get_logs(self) -> Dict[str, float]:
         """
@@ -457,11 +307,24 @@ class LateralNetwork(pl.LightningModule):
             plt.tight_layout()
             plt.show()
 
-    def plot_features_single_sample(self, img: Tensor, features: Tensor):
+    def plot_samples(self,
+                     img: List[Tensor],
+                     features: List[Tensor],
+                     input_features: List[Tensor],
+                     lateral_features: List[Tensor]):
         """
         Plot the features extracted from a single sample.
-        :param img: The original image
-        :param features: The features extracted from the image.
+        :param img: A list of samples, i.e. of batches of the original images (shape is (B, V, C, H, W) where V is
+        the number of augmented views).
+        :param features: A list of samples, i.e. batches of the features extracted from the image (shape is (B, V, C,
+        H, W) where V is the number of augmented views and C is the number of output channels from the feature
+        extractor).
+        :param input_features: A list of samples, i.e. binary version of the features that were actually fed into the
+        lateral network (shape is (B, V, C, H, W) where V is the number of augmented views and C is the number of
+        output channels from the feature extractor).
+        :param lateral_features: A list of samples, i.e. batches of the features extracted from the lateral network
+        over time (shape is (B, V, T, C, H, W) where V is the number of augmented views, T is the number of
+        timesteps, and C is the number of output channels from the lateral layer).
         """
 
         def _plot_input_features(img, features, input_features):
@@ -492,7 +355,6 @@ class LateralNetwork(pl.LightningModule):
                         vmin=0, vmax=1)
 
         def _plot_lateral_output(img, lateral_features):
-            # raise NotImplementedError("TODO: The oppsoite is active (the background are the features)")
             max_views = 10
             plt_images, plt_titles, plt_masks = [], [], []
             for view_idx in range(min(max_views, lateral_features.shape[0])):
@@ -506,26 +368,17 @@ class LateralNetwork(pl.LightningModule):
             plot_images(images=plt_images, titles=plt_titles, masks=plt_masks, max_cols=2, plot_colorbar=True,
                         vmin=0, vmax=1, mask_vmin=0, mask_vmax=lateral_features.shape[2] + 1)
 
-        self.model.set_train(False)
-        with torch.no_grad():
-            input_features, lateral_features, changes = self.forward_steps_multiple_views_through_time(features)
+        for img_i, features_i, input_features_i, lateral_features_i in zip(img, features, input_features,
+                                                                           lateral_features):
+            for batch_idx in range(img_i.shape[0]):
+                _plot_input_features(img_i[batch_idx], features_i[batch_idx], input_features_i[batch_idx])
+                _plot_lateral_activation_map(lateral_features_i[batch_idx])
+                _plot_lateral_output(img_i[batch_idx], lateral_features_i[batch_idx])
 
-        input_features = torch.stack(input_features, dim=1)
-        lateral_features = torch.stack([torch.stack(f, dim=1) for f in lateral_features], dim=1)
-
-        # select sample of the batch
-        for i in range(min(3, img.shape[0])):
-            img_i = img[i]
-            features_i = features[i]
-            input_features_i = input_features[i]
-            lateral_features_i = lateral_features[i]
-
-            # _plot_input_features(img_i, features_i, input_features_i)
-            _plot_lateral_activation_map(lateral_features_i)
-            _plot_lateral_output(img_i, lateral_features_i)
-
-
-    def create_activations_video(self, images: List[Tensor], features: List[List[Tensor]], activations: List[List[List[Tensor]]]):
+    def create_activations_video(self,
+                                 images: List[Tensor],
+                                 features: List[List[Tensor]],
+                                 activations: List[List[List[Tensor]]]):
         """
         Create a video of the activations.
         :param images: The original images.
@@ -547,28 +400,29 @@ class LateralNetwork(pl.LightningModule):
 
                 for view_idx in range(len(features_img)):
                     img_view = img[batch_idx, view_idx]
-                    features_view = features_img[view_idx][batch_idx]
-                    activations_view = activations_img[view_idx]
+                    features_view = features_img[batch_idx, view_idx]
+                    activations_view = activations_img[batch_idx, view_idx]
 
                     for time_idx in range(len(activations_view)):
-                        activations_view_time = activations_view[time_idx][batch_idx]
+                        activations_view_time = activations_view[time_idx]
                         features_view_dec = bin2dec(features_view.permute(1, 2, 0))
                         activations_view_time_dec = bin2dec(activations_view_time.permute(1, 2, 0))
 
-                        plot_images(images=[img_view]*3,
+                        plot_images(images=[img_view] * 3,
                                     show_plot=False,
                                     fig_fp=str(folder / f"{c:04d}.png"),
                                     titles=["Image", "Inp. Features", "Activations"],
                                     suptitle=f"Image {img_idx}.{batch_idx}, View {view_idx}, Time {time_idx}",
                                     masks=[None, features_view_dec, activations_view_time_dec],
-                                    max_cols=3, plot_colorbar=True, vmin=0, vmax=1, mask_vmin=0, mask_vmax=2**4)
+                                    max_cols=3, plot_colorbar=True, vmin=0, vmax=1, mask_vmin=0, mask_vmax=2 ** 4)
                         c += 1
 
-                create_video_from_images_ffmpeg(folder, f"{folder / datetime.now().strftime('%Y-%d-%m_%H-%M-%S')}_{img_idx}_{batch_idx}.mp4")
+                create_video_from_images_ffmpeg(folder,
+                                                f"{folder / datetime.now().strftime('%Y-%d-%m_%H-%M-%S')}_{img_idx}_"
+                                                f"{batch_idx}.mp4")
 
                 for f in folder.glob("*.png"):
                     f.unlink()
-
 
     def configure_model(self) -> nn.Module:
         """

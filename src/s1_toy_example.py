@@ -153,13 +153,6 @@ def single_train_epoch(
             features = feature_extractor(batch)
         lateral_network.forward_steps_multiple_views_through_time(features)
 
-
-        # Plot sample
-        if i == (len(train_loader) - 1) and config['run']['visualize_plots']:
-            lateral_network.model.set_train(False)
-            lateral_network.plot_features_single_sample(batch, features)
-            lateral_network.plot_model_weights()
-
     lateral_network.model.set_train(False)
 
 def single_eval_epoch(
@@ -178,7 +171,7 @@ def single_eval_epoch(
     :param epoch: Current epoch.
     """
     lateral_network.model.set_train(False)
-    plt_img, plt_features, plt_activations = [], [], []
+    plt_img, plt_features, plt_input_features, plt_activations = [], [], [], []
     for i, batch in tqdm(enumerate(test_loader),
                          total=len(test_loader),
                          colour="GREEN",
@@ -187,10 +180,15 @@ def single_eval_epoch(
             features = feature_extractor(batch)
             input_features, lateral_features, changes = lateral_network.forward_steps_multiple_views_through_time(features)
             plt_img.append(batch)
-            plt_features.append(input_features)
+            plt_features.append(features)
+            plt_input_features.append(input_features)
             plt_activations.append(lateral_features)
 
-    lateral_network.create_activations_video(plt_img, plt_features, plt_activations)
+    if config['run']['plots']['enable'] and (not config['run']['plots']['only_last_epoch'] or epoch == config['run']['n_epochs'] - 1):
+        lateral_network.plot_samples(plt_img, plt_features, plt_input_features, plt_activations)
+        lateral_network.plot_model_weights()
+        lateral_network.create_activations_video(plt_img, plt_input_features, plt_activations)
+
 
 
 def train(
