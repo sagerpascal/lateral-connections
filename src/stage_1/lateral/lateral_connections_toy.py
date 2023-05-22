@@ -51,11 +51,16 @@ class LateralLayerEfficient(nn.Module):
         self.lr = lr
         self.k = 1  # out_channels  # TODO: Currently no winner-take-all, so k is not used
         self.thr_rate = 0.05  # 10.
+        self.mask_out_bg = False
         self.target_rate = self.k / self.out_channels
         self.train_ = True
         self.step = 0
         self.ts = None
         self.prev_activations = {}
+        self.prev_activation = None
+
+        if self.mask_out_bg:
+            self.target_rate = self.target_rate / 50
 
         self.W = torch.randn((self.out_channels, self.in_channels, self.neib_size, self.neib_size), requires_grad=True,
                              device=fabric.device)
@@ -69,6 +74,7 @@ class LateralLayerEfficient(nn.Module):
         To be called when a new sample is fed into the network.
         """
         self.prev_activations = {}
+        self.prev_activation = None
 
     def update_ts(self, ts):
         """
@@ -93,16 +99,23 @@ class LateralLayerEfficient(nn.Module):
 
             # if self.ts in self.prev_activations:
             #     realy = .4 * realy + (1 - .4) * self.prev_activations[self.ts]
-            if self.ts-1 in self.prev_activations:
-                realy = .5 * realy + (1-.5) * self.prev_activations[self.ts-1]
-            self.prev_activations[self.ts] = realy
+            #if self.ts-1 in self.prev_activations:
+            #    realy = .5 * realy + (1-.5) * self.prev_activations[self.ts-1]
+            a = realy.detach()
+            if self.prev_activation is not None:
+                realy = .7 * realy + (1 - .7) * self.prev_activation
+            #self.prev_activations[self.ts] = realy.detach()
+            self.prev_activation = a
 
             # TODO: In order that the channels have more distinct features, we could limit the number of activations per channel to 1.5x the input activations of the same channel?
             # TODO: We could use different Filters, e.g. some layers can access only some input filters (number of combinations: 2^in_channels)
 
             # k winner take all
+            smallest_value_per_channel = torch.amin(realy, dim=(2, 3)) + 0.0001
             tk = torch.topk(realy.data, self.k, dim=1, largest=True)[0]
             realy.data[realy.data < tk.data[:, -1, :, :][:, None, :, :]] = 0
+            if self.mask_out_bg:
+                realy.data[realy.data <= smallest_value_per_channel.view(smallest_value_per_channel.shape +(1, 1))] = 0  # mask out background...
 
             # binary output
             realy.data = (realy.data > 0).float()
@@ -173,7 +186,7 @@ class LateralLayerEfficientNetwork1L(nn.Module):
     def forward(self, x: Tensor) -> Tuple[List[int], Tensor, int]:
         """
         Forward pass over multiple timesteps
-        :param x_in: The input tensor (extracted features of the image)
+        :param x: The input tensor (extracted features of the image)
         :return: List of changes, Features extracted by the lateral layers, number of timesteps
         """
         t = 0
