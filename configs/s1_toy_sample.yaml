@@ -10,7 +10,7 @@ run:
   current_epoch: 0
   plots:
     enable: True
-    only_last_epoch: True
+    only_last_epoch: False
 
 
 logging:
@@ -32,5 +32,5 @@ lateral_model:
   alpha: 0.09 #0.905
   lr: 0.0005
   channels: 4
-  max_timesteps: 5  # 2000
+  max_timesteps: 3  # 2000
   change_threshold: 0.00001

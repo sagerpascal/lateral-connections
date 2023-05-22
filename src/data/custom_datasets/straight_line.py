@@ -1,6 +1,7 @@
 import random
 from typing import Callable, Literal, Optional, Tuple
 
+import numpy as np
 import torch
 from PIL import Image, ImageDraw
 from torch.utils.data import Dataset
@@ -18,6 +19,7 @@ class StraightLine(Dataset):
                  num_channels: Literal[1, 3] = 1,
                  vertical_horizontal_only: Optional[bool] = False,
                  fixed_lines_eval_test: Optional[bool] = False,
+                 noise: Optional[float] = 0.,
                  transform: Optional[Callable] = None):
         """
         Dataset that generates images with a straight line.
@@ -28,11 +30,13 @@ class StraightLine(Dataset):
         :param num_channels: Number of channels of the images (1 for grayscale, 3 for RGB).
         :param vertical_horizontal_only: Whether to only generate vertical and horizontal lines.
         :param fixed_lines_eval_test: Whether to use fixed lines for the evaluation and test sets.
+        :param noise: The amount of noise to add to the image (i.e. probability to set some pixels to 1).
         :param transform: Optional transform to be applied on a sample.
         """
         super().__init__()
         assert num_channels == 1 or num_channels == 3, "num_channels must be 1 or 3"
         assert num_aug_versions >= 0, "num_aug_versions must be >= 0"
+        assert 0 <= noise <= 1, "noise must be between 0 and 1"
 
         self.split = split
         self.img_h = img_h
@@ -42,6 +46,7 @@ class StraightLine(Dataset):
         self.num_channels = num_channels
         self.vertical_horizontal_only = vertical_horizontal_only
         self.fixed_lines_eval_test = fixed_lines_eval_test
+        self.noise = noise
         self.transform = transform
 
         if self.transform is None:
@@ -144,6 +149,13 @@ class StraightLine(Dataset):
             img = self._create_l_image(line_coords)
         elif self.num_channels == 3:
             img = self._create_rgb_image(line_coords)
+        else:
+            raise ValueError('num_channels must be 1 or 3')
+
+        if self.noise > 0.:
+            img = np.array(img)
+            img = img + np.random.choice(2, img.shape, p=[1 - self.noise, self.noise]) * 255
+            img = Image.fromarray(img.astype(np.uint8))
 
         if self.transform:
             img = self.transform(img)
@@ -178,7 +190,7 @@ def _plot_some_samples():
     ])
 
     dataset = StraightLine(split="test", img_h=32, img_w=32, num_images=10, num_aug_versions=4, num_channels=1,
-                           transform=transform)
+                           transform=transform, noise=0.005)
 
     fig, axs = plt.subplots(10, 5, figsize=(6, 10))
     for i in range(10):

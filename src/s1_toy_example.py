@@ -58,7 +58,7 @@ def parse_args(parser: Optional[argparse.ArgumentParser] = None):
     parser.add_argument('--plot',
                         action='store_true',
                         default=False,
-                        dest='run:visualize_plots',
+                        dest='run:plots:enable',
                         help='Plot results'
                         )
     parser.add_argument('--store',
