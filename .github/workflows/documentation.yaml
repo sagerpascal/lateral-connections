@@ -16,9 +16,9 @@ jobs:
           sphinx-build docs _build
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v3
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/features/documentation' }}
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/features/documentation'  }}
         with:
-          publish_branch: gh-pages
+          publish_branch: features/documentation
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: _build/
+          publish_dir: docs/_build/
           force_orphan: true
