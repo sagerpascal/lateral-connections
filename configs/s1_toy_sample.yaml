@@ -10,7 +10,8 @@ run:
   current_epoch: 0
   plots:
     enable: True
-    only_last_epoch: False
+    only_last_epoch: True
+    store_path: "../tmp/test/"
 
 
 logging:
@@ -34,3 +35,5 @@ lateral_model:
   channels: 4
   max_timesteps: 3  # 2000
   change_threshold: 0.00001
+  mask_bg: False
+  moving_average: False

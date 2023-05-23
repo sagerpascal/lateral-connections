@@ -81,16 +81,16 @@ straightline:
     split: "val"
     vertical_horizontal_only: True
     fixed_lines_eval_test: True
-    num_images: 4
+    num_images: 5
     num_aug_versions: 10
-    noise: 0.005
+    noise: 0.0
   test_dataset_params:
     split: "test"
     vertical_horizontal_only: True
     fixed_lines_eval_test: True
-    num_images: 4
+    num_images: 5
     num_aug_versions: 10
-    noise: 0.005
+    noise: 0.0
 
 augmentation_v1:
   aug1:

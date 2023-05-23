@@ -31,6 +31,8 @@ class LateralLayerEfficient(nn.Module):
                  out_channels: int,
                  locality_size: Optional[int] = 5,
                  lr: Optional[float] = 0.01,
+                 mask_out_bg: Optional[bool] = True,
+                 moving_average: Optional[bool] = True,
                  ):
         """
         Lateral Layer trained with Hebbian Learning. The input and output of this layer are binary.
@@ -42,6 +44,8 @@ class LateralLayerEfficient(nn.Module):
         :param locality_size: Size of the locality, i.e. how many neurons are connected to each other. For
         example, if locality_size = 2, then each neuron is connected to 5 neurons on each side of it.
         :param lr: Learning rate.
+        :param mask_out_bg: Whether to mask out the background.
+        :param moving_average: Whether to apply moving average on the activations.
         """
         super().__init__()
         self.in_channels = in_channels
@@ -49,9 +53,13 @@ class LateralLayerEfficient(nn.Module):
         self.locality_size = locality_size
         self.neib_size = 2 * self.locality_size + 1
         self.lr = lr
+        self.mask_out_bg = mask_out_bg
+        self.moving_average = moving_average
+
+        print("Mask out background:", self.mask_out_bg, "Moving average:", self.moving_average)
+
         self.k = 1  # out_channels  # TODO: Currently no winner-take-all, so k is not used
         self.thr_rate = 0.05  # 10.
-        self.mask_out_bg = False
         self.target_rate = self.k / self.out_channels
         self.train_ = True
         self.step = 0
@@ -97,15 +105,14 @@ class LateralLayerEfficient(nn.Module):
         with torch.no_grad():
             realy = (prelimy - self.b)
 
-            # if self.ts in self.prev_activations:
-            #     realy = .4 * realy + (1 - .4) * self.prev_activations[self.ts]
-            #if self.ts-1 in self.prev_activations:
-            #    realy = .5 * realy + (1-.5) * self.prev_activations[self.ts-1]
-            a = realy.detach()
-            if self.prev_activation is not None:
-                realy = .7 * realy + (1 - .7) * self.prev_activation
-            #self.prev_activations[self.ts] = realy.detach()
-            self.prev_activation = a
+            if self.moving_average:
+                # if self.ts in self.prev_activations:
+                #     realy = .4 * realy + (1 - .4) * self.prev_activations[self.ts]
+                #if self.ts-1 in self.prev_activations:
+                #    realy = .5 * realy + (1-.5) * self.prev_activations[self.ts-1]
+                if self.prev_activation is not None:
+                    realy = .7 * realy + (1 - .7) * self.prev_activation
+                self.prev_activation = realy.detach()
 
             # TODO: In order that the channels have more distinct features, we could limit the number of activations per channel to 1.5x the input activations of the same channel?
             # TODO: We could use different Filters, e.g. some layers can access only some input filters (number of combinations: 2^in_channels)
@@ -140,8 +147,7 @@ class LateralLayerEfficient(nn.Module):
         with torch.no_grad():
             # Threshold adaptation is based on realy, i.e. the one used for plasticity. Always binarized (firing vs.
             # not firing).
-            self.b += self.thr_rate * (
-                    torch.mean((realy.data > 0).float(), dim=(0, 2, 3))[None, :, None, None] - self.target_rate)
+            self.b += self.thr_rate * (torch.mean((realy.data > 0).float(), dim=(0, 2, 3))[None, :, None, None] - self.target_rate)
 
         self.step += 1
         return realy.detach()
@@ -171,7 +177,9 @@ class LateralLayerEfficientNetwork1L(nn.Module):
             in_channels= in_channels + lm_conf["channels"] if self.concat_input else in_channels,
             out_channels=lm_conf["channels"],
             locality_size=lm_conf['locality_size'],
-            lr=lm_conf['lr']
+            lr=lm_conf['lr'],
+            mask_out_bg=lm_conf['mask_bg'],
+            moving_average=lm_conf['moving_average'],
         )
 
     def new_sample(self):
@@ -320,6 +328,11 @@ class LateralNetwork(pl.LightningModule):
             plt.tight_layout()
             plt.show()
 
+            fig_fp = self.conf['run']['plots'].get('store_path', None)
+
+            if fig_fp is not None:
+                plt.savefig(Path(fig_fp) / f'weights_{layer}.png')
+
     def plot_samples(self,
                      img: List[Tensor],
                      features: List[Tensor],
@@ -340,7 +353,7 @@ class LateralNetwork(pl.LightningModule):
         timesteps, and C is the number of output channels from the lateral layer).
         """
 
-        def _plot_input_features(img, features, input_features):
+        def _plot_input_features(img, features, input_features, fig_fp: Optional[str] = None):
             plt_images, plt_titles = [], []
             for view_idx in range(img.shape[0]):
                 plt_images.append(img[view_idx])
@@ -352,9 +365,9 @@ class LateralNetwork(pl.LightningModule):
                     plt_titles.append(f"Lateral Input V={view_idx} C={feature_idx}")
             plt_images = self._normalize_image_list(plt_images)
             plot_images(images=plt_images, titles=plt_titles, max_cols=2 * features.shape[1] + 1, plot_colorbar=True,
-                        vmin=0, vmax=1)
+                        vmin=0, vmax=1, fig_fp=fig_fp)
 
-        def _plot_lateral_activation_map(lateral_features):
+        def _plot_lateral_activation_map(lateral_features, fig_fp: Optional[str] = None):
             max_views = 3
             plt_images, plt_titles = [], []
             for view_idx in range(min(max_views, lateral_features.shape[0])):
@@ -365,9 +378,9 @@ class LateralNetwork(pl.LightningModule):
                             f"Lat. L={1 if time_idx == 0 else 2} V={view_idx} T={time_idx} C={feature_idx}")
             plt_images = self._normalize_image_list(plt_images)
             plot_images(images=plt_images, titles=plt_titles, max_cols=lateral_features.shape[2], plot_colorbar=True,
-                        vmin=0, vmax=1)
+                        vmin=0, vmax=1, fig_fp=fig_fp)
 
-        def _plot_lateral_output(img, lateral_features):
+        def _plot_lateral_output(img, lateral_features, fig_fp: Optional[str] = None):
             max_views = 10
             plt_images, plt_titles, plt_masks = [], [], []
             for view_idx in range(min(max_views, lateral_features.shape[0])):
@@ -379,14 +392,21 @@ class LateralNetwork(pl.LightningModule):
                 plt_masks.extend([None, calc_mask])
             plt_images = self._normalize_image_list(plt_images)
             plot_images(images=plt_images, titles=plt_titles, masks=plt_masks, max_cols=2, plot_colorbar=True,
-                        vmin=0, vmax=1, mask_vmin=0, mask_vmax=lateral_features.shape[2] + 1)
+                        vmin=0, vmax=1, mask_vmin=0, mask_vmax=lateral_features.shape[2] + 1, fig_fp=fig_fp)
 
-        for img_i, features_i, input_features_i, lateral_features_i in zip(img, features, input_features,
-                                                                           lateral_features):
+        fig_fp = self.conf['run']['plots'].get('store_path', None)
+        for i, (img_i, features_i, input_features_i, lateral_features_i) in enumerate(zip(img, features, input_features,
+                                                                           lateral_features)):
             for batch_idx in range(img_i.shape[0]):
-                _plot_input_features(img_i[batch_idx], features_i[batch_idx], input_features_i[batch_idx])
-                _plot_lateral_activation_map(lateral_features_i[batch_idx])
-                _plot_lateral_output(img_i[batch_idx], lateral_features_i[batch_idx])
+                if fig_fp is not None:
+                    fig_fp = Path(fig_fp)
+                    base_name = f"sample_{i}_batch_idx_{batch_idx}"
+                _plot_input_features(img_i[batch_idx], features_i[batch_idx], input_features_i[batch_idx],
+                                     fig_fp=fig_fp / f'{base_name}_input_features.png')
+                _plot_lateral_activation_map(lateral_features_i[batch_idx],
+                                             fig_fp=fig_fp / f'{base_name}_lateral_act_maps.png')
+                _plot_lateral_output(img_i[batch_idx], lateral_features_i[batch_idx],
+                                     fig_fp=fig_fp / f'{base_name}_lateral_output.png')
 
     def create_activations_video(self,
                                  images: List[Tensor],
@@ -429,9 +449,10 @@ class LateralNetwork(pl.LightningModule):
                                     masks=[None, features_view_dec, activations_view_time_dec],
                                     max_cols=3, plot_colorbar=True, vmin=0, vmax=1, mask_vmin=0, mask_vmax=2 ** 4)
                         c += 1
-
+                fig_fp = self.conf['run']['plots'].get('store_path', None)
+                fig_fp = Path(fig_fp) if fig_fp is not None else folder
                 create_video_from_images_ffmpeg(folder,
-                                                f"{folder / datetime.now().strftime('%Y-%d-%m_%H-%M-%S')}_{img_idx}_"
+                                                f"{fig_fp / datetime.now().strftime('%Y-%d-%m_%H-%M-%S')}_{img_idx}_"
                                                 f"{batch_idx}.mp4")
 
                 for f in folder.glob("*.png"):

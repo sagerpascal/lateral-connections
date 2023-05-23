@@ -1,4 +1,5 @@
 import argparse
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import lightning.pytorch as pl
@@ -60,6 +61,41 @@ def parse_args(parser: Optional[argparse.ArgumentParser] = None):
                         default=False,
                         dest='run:plots:enable',
                         help='Plot results'
+                        )
+    parser.add_argument('--plot_dir',
+                        type=str,
+                        dest='run:plots:store_path',
+                        help='Store the plotted results in the given path'
+                        )
+    parser.add_argument('--mask_bg',
+                        action='store_true',
+                        default=False,
+                        dest='lateral_model:mask_bg',
+                        help='Mask out the background in the lateral connections'
+                        )
+    parser.add_argument('--moving_average',
+                        action='store_true',
+                        default=False,
+                        dest='lateral_model:moving_average',
+                        help='Apply moving average to the activations of the lateral connections'
+                        )
+    parser.add_argument("--train_noise",
+                        type=float,
+                        # default=0.,
+                        dest="dataset:train_dataset_params:noise",
+                        help="The noise added to the training data (default: 0.)"
+                        )
+    parser.add_argument("--valid_noise",
+                        type=float,
+                        # default=0.005,
+                        dest="dataset:valid_dataset_params:noise",
+                        help="The noise added to the validation data (default: 0.005)"
+                        )
+    parser.add_argument("--test_noise",
+                        type=float,
+                        # default=0.005,
+                        dest="dataset:test_dataset_params:noise",
+                        help="The noise added to the test data (default: 0.005)"
                         )
     parser.add_argument('--store',
                         type=str,
@@ -235,6 +271,10 @@ def main():
     feature_extractor.eval()  # does not have to be trained
     lateral_network = setup_lateral_network(config, fabric)
     lateral_network.train()
+    if 'store_path' in config['run']['plots'] and config['run']['plots']['store_path'] != 'None':
+        fp = Path(config['run']['plots']['store_path'])
+        if not fp.exists():
+            fp.mkdir(parents=True, exist_ok=True)
     train(config, feature_extractor, lateral_network, train_loader, test_loader)
 
 

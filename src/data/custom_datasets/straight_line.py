@@ -189,16 +189,16 @@ def _plot_some_samples():
         transforms.ToTensor(),
     ])
 
-    dataset = StraightLine(split="test", img_h=32, img_w=32, num_images=10, num_aug_versions=4, num_channels=1,
-                           transform=transform, noise=0.005)
+    dataset = StraightLine(split="test", img_h=32, img_w=32, num_images=10, num_aug_versions=9, num_channels=1,
+                           transform=transform, vertical_horizontal_only=True, fixed_lines_eval_test=True, noise=0.005)
 
-    fig, axs = plt.subplots(10, 5, figsize=(6, 10))
+    fig, axs = plt.subplots(10, 10, figsize=(10, 10))
     for i in range(10):
         img = dataset[i]
         for idx in range(img.shape[0]):
-            j = i * 5 + idx
-            axs[j // 5, j % 5].imshow(img[idx].squeeze(), vmin=0, vmax=1, cmap='gray')
-            axs[j // 5, j % 5].axis('off')
+            j = i * 10 + idx
+            axs[j // 10, j % 10].imshow(img[idx].squeeze(), vmin=0, vmax=1, cmap='gray')
+            axs[j // 10, j % 10].axis('off')
     plt.tight_layout()
     plt.show()
 
