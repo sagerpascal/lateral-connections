@@ -41,18 +41,18 @@ Experiments
 Run the code with `python s1_toy_example.py --plot --plot_dir <> --test_noise <> --mask_bg --moving_average`.
 
 
- ============ ======= ===================== ================
-  Experiment   Noise   Mask out Background   Moving Average
- ============ ======= ===================== ================
+ ============ ======= ===================== =====================
+  Experiment   Noise   Mask out Background     Moving Average
+ ============ ======= ===================== =====================
  1               ❌            ❌                   ❌
- 2               ❌            ❌                    ✅
+ 2.1 / 2.2       ❌            ❌                    ✅ (V1, V2)
  3               ❌            ✅                   ❌
- 4               ❌            ✅                    ✅
+ 4.1 / 4.3       ❌            ✅                    ✅ (V1, V2)
  5               ✅            ❌                   ❌
- 6               ✅            ❌                    ✅
+ 6.1 / 6.2       ✅            ❌                    ✅ (V1, V2)
  7               ✅            ✅                   ❌
- 8               ✅            ✅                    ✅
- ============ ======= ===================== ================
+ 8.1 / 8.2       ✅            ✅                    ✅ (V1, V2)
+ ============ ======= ===================== =====================
 
 Noise
   Whether to add 0.5% noise to the test images.
@@ -65,7 +65,10 @@ Mask out Background
 
 Moving Average
   Whether to use a moving average to smooth the activations. The moving average is applied to the activations
-  for the features that stem from the same image (over multiple timesteps and views).
+  for the features that stem from the same image.
+  We used two kinds of moving averages: V1 calculates the average as `z[t+1] := 0.7 * z[t+1] + 0.3 + z[t]` over
+  all views and timesteps from the same image. V1 calculates the average as `z[t+1] := 0.5 * z[t+1] + 0.5 + z_old[t+1]`,
+  thus only uses activations that stem from the same timestep (but different views).
 
 
 Results
@@ -90,6 +93,8 @@ Experiment 1: No noise, no background masking, no moving average
 Experiment 2: No noise, no background masking, moving average
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+**Moving Average V1**
+
 .. video:: ../_static/results/04_01.mp4
    :width: 450
 
@@ -102,6 +107,19 @@ Experiment 2: No noise, no background masking, moving average
 .. video:: ../_static/results/04_04.mp4
    :width: 450
 
+**Moving Average V2**
+
+.. video:: ../_static/results/04_01_V2.mp4
+   :width: 450
+
+.. video:: ../_static/results/04_02_V2.mp4
+   :width: 450
+
+.. video:: ../_static/results/04_03_V2.mp4
+   :width: 450
+
+.. video:: ../_static/results/04_04_V2.mp4
+   :width: 450
 
 Experiment 3: No noise, background masking, no moving average
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -122,6 +140,8 @@ Experiment 3: No noise, background masking, no moving average
 Experiment 4: No noise, background masking, moving average
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+**Moving Average V1**
+
 .. video:: ../_static/results/06_01.mp4
    :width: 450
 
@@ -133,6 +153,21 @@ Experiment 4: No noise, background masking, moving average
 
 .. video:: ../_static/results/06_04.mp4
    :width: 450
+
+**Moving Average V2**
+
+.. video:: ../_static/results/06_01_V2.mp4
+   :width: 450
+
+.. video:: ../_static/results/06_02_V2.mp4
+   :width: 450
+
+.. video:: ../_static/results/06_03_V2.mp4
+   :width: 450
+
+.. video:: ../_static/results/06_04_V2.mp4
+   :width: 450
+
 
 Experiment 5: Noise, no background masking, no moving average
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -152,6 +187,8 @@ Experiment 5: Noise, no background masking, no moving average
 Experiment 6: Noise, no background masking, moving average
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+**Moving Average V1**
+
 .. video:: ../_static/results/08_01.mp4
    :width: 450
 
@@ -163,6 +200,21 @@ Experiment 6: Noise, no background masking, moving average
 
 .. video:: ../_static/results/08_04.mp4
    :width: 450
+
+**Moving Average V2**
+
+.. video:: ../_static/results/08_01_V2.mp4
+   :width: 450
+
+.. video:: ../_static/results/08_02_V2.mp4
+   :width: 450
+
+.. video:: ../_static/results/08_03_V2.mp4
+   :width: 450
+
+.. video:: ../_static/results/08_04_V2.mp4
+   :width: 450
+
 
 Experiment 7: Noise, background masking, no moving average
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -182,6 +234,8 @@ Experiment 7: Noise, background masking, no moving average
 Experiment 8: Noise, background masking, moving average
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+**Moving Average V1**
+
 .. video:: ../_static/results/10_01.mp4
    :width: 450
 
@@ -194,5 +248,16 @@ Experiment 8: Noise, background masking, moving average
 .. video:: ../_static/results/10_04.mp4
    :width: 450
 
+**Moving Average V2**
 
+.. video:: ../_static/results/10_01_V2.mp4
+   :width: 450
 
+.. video:: ../_static/results/10_02_V2.mp4
+   :width: 450
+
+.. video:: ../_static/results/10_03_V2.mp4
+   :width: 450
+
+.. video:: ../_static/results/10_04_V2.mp4
+   :width: 450
