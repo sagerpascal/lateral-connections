@@ -58,8 +58,10 @@ Noise
   Whether to add 0.5% noise to the test images.
 
 Mask out Background
-  Whether to mask out the background. With this option, the bias is set to `1/num_channels/50` and the background is set to 0.
-  Otherwise, the bias is set to `1/num_channels` and the background is by using winner-takes-all.
+  Whether to mask out the background. With this option, the bias is set to `1/num_channels/50` and the background
+  (i.e. the pixels with the smallest value per channel) is set to 0.
+  Otherwise, the bias is set to `1/num_channels` and the background is contained in as features in the channels
+  (winner-takes-all will always select one channel per pixel as winner).
 
 Moving Average
   Whether to use a moving average to smooth the activations. The moving average is applied to the activations
@@ -72,124 +74,124 @@ Results
 Experiment 1: No noise, no background masking, no moving average
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. video:: /_static/results/03_01.mp4
+.. video:: ../_static/results/03_01.mp4
    :width: 450
 
-.. video:: /_static/results/03_02.mp4
+.. video:: ../_static/results/03_02.mp4
    :width: 450
 
-.. video:: /_static/results/03_03.mp4
+.. video:: ../_static/results/03_03.mp4
    :width: 450
 
-.. video:: /_static/results/03_04.mp4
+.. video:: ../_static/results/03_04.mp4
    :width: 450
 
 
 Experiment 2: No noise, no background masking, moving average
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. video:: /_static/results/04_01.mp4
+.. video:: ../_static/results/04_01.mp4
    :width: 450
 
-.. video:: /_static/results/04_02.mp4
+.. video:: ../_static/results/04_02.mp4
    :width: 450
 
-.. video:: /_static/results/04_03.mp4
+.. video:: ../_static/results/04_03.mp4
    :width: 450
 
-.. video:: /_static/results/04_04.mp4
+.. video:: ../_static/results/04_04.mp4
    :width: 450
 
 
 Experiment 3: No noise, background masking, no moving average
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. video:: /_static/results/05_01.mp4
+.. video:: ../_static/results/05_01.mp4
    :width: 450
 
-.. video:: /_static/results/05_02.mp4
+.. video:: ../_static/results/05_02.mp4
    :width: 450
 
-.. video:: /_static/results/05_03.mp4
+.. video:: ../_static/results/05_03.mp4
    :width: 450
 
-.. video:: /_static/results/05_04.mp4
+.. video:: ../_static/results/05_04.mp4
    :width: 450
 
 
 Experiment 4: No noise, background masking, moving average
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. video:: /_static/results/06_01.mp4
+.. video:: ../_static/results/06_01.mp4
    :width: 450
 
-.. video:: /_static/results/06_02.mp4
+.. video:: ../_static/results/06_02.mp4
    :width: 450
 
-.. video:: /_static/results/06_03.mp4
+.. video:: ../_static/results/06_03.mp4
    :width: 450
 
-.. video:: /_static/results/06_04.mp4
+.. video:: ../_static/results/06_04.mp4
    :width: 450
 
 Experiment 5: Noise, no background masking, no moving average
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. video:: /_static/results/07_01.mp4
+.. video:: ../_static/results/07_01.mp4
    :width: 450
 
-.. video:: /_static/results/07_02.mp4
+.. video:: ../_static/results/07_02.mp4
    :width: 450
 
-.. video:: /_static/results/07_03.mp4
+.. video:: ../_static/results/07_03.mp4
    :width: 450
 
-.. video:: /_static/results/07_04.mp4
+.. video:: ../_static/results/07_04.mp4
    :width: 450
 
 Experiment 6: Noise, no background masking, moving average
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. video:: /_static/results/08_01.mp4
+.. video:: ../_static/results/08_01.mp4
    :width: 450
 
-.. video:: /_static/results/08_02.mp4
+.. video:: ../_static/results/08_02.mp4
    :width: 450
 
-.. video:: /_static/results/08_03.mp4
+.. video:: ../_static/results/08_03.mp4
    :width: 450
 
-.. video:: /_static/results/08_04.mp4
+.. video:: ../_static/results/08_04.mp4
    :width: 450
 
 Experiment 7: Noise, background masking, no moving average
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. video:: /_static/results/09_01.mp4
+.. video:: ../_static/results/09_01.mp4
    :width: 450
 
-.. video:: /_static/results/09_02.mp4
+.. video:: ../_static/results/09_02.mp4
    :width: 450
 
-.. video:: /_static/results/09_03.mp4
+.. video:: ../_static/results/09_03.mp4
    :width: 450
 
-.. video:: /_static/results/09_04.mp4
+.. video:: ../_static/results/09_04.mp4
    :width: 450
 
 Experiment 8: Noise, background masking, moving average
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. video:: /_static/results/10_01.mp4
+.. video:: ../_static/results/10_01.mp4
    :width: 450
 
-.. video:: /_static/results/10_02.mp4
+.. video:: ../_static/results/10_02.mp4
    :width: 450
 
-.. video:: /_static/results/10_03.mp4
+.. video:: ../_static/results/10_03.mp4
    :width: 450
 
-.. video:: /_static/results/10_04.mp4
+.. video:: ../_static/results/10_04.mp4
    :width: 450
 
 
