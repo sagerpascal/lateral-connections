@@ -8,6 +8,10 @@ Desired (not Expected) Result
   :width: 400
   :alt: Desired Results
 
+- The activations should capture the characteristics of the object
+  - The image should be consistent, similar images (same object at similar location) should have similar activations, different images should have different activations
+  - Small differences should not lead to large differences in the activations or can be even smoothed out
+- The algorithm should be as simple as possible
 - The activations should allow to identify and locate the object
 - It would be desirable to have different activations for different features, e.g. for end of line and middle section of line
 - Noise should be ignored
