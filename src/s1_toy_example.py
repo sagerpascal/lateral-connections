@@ -14,6 +14,7 @@ from tqdm import tqdm
 from data import loaders_from_config, plot_images
 from stage_1.feature_extractor.straight_line_pl_modules import FixedFilterFeatureExtractor
 from stage_1.lateral.lateral_connections_toy import LateralNetwork
+from tools.store_load_run import load_run, save_run
 from utils import get_config, print_start, print_warn
 
 
@@ -66,18 +67,6 @@ def parse_args(parser: Optional[argparse.ArgumentParser] = None):
                         type=str,
                         dest='run:plots:store_path',
                         help='Store the plotted results in the given path'
-                        )
-    parser.add_argument('--mask_bg',
-                        action='store_true',
-                        default=False,
-                        dest='lateral_model:mask_bg',
-                        help='Mask out the background in the lateral connections'
-                        )
-    parser.add_argument('--moving_average',
-                        action='store_true',
-                        default=False,
-                        dest='lateral_model:moving_average',
-                        help='Apply moving average to the activations of the lateral connections'
                         )
     parser.add_argument("--train_noise",
                         type=float,
@@ -243,10 +232,10 @@ def train(
     """
     start_epoch = config['run']['current_epoch']
     for epoch in range(start_epoch, config['run']['n_epochs']):
-        config['run']['current_epoch'] = epoch
         single_train_epoch(config, feature_extractor, lateral_network, train_loader, epoch)
         single_eval_epoch(config, feature_extractor, lateral_network, test_loader, epoch)
         lateral_network.on_epoch_end()
+        config['run']['current_epoch'] = epoch + 1
 
 
 def setup_lateral_network(config, fabric) -> pl.LightningModule:
@@ -269,14 +258,23 @@ def main():
     fabric = setup_fabric()
     train_loader, test_loader = setup_dataloader(config, fabric)
     feature_extractor = setup_feature_extractor(config, fabric)
-    feature_extractor.eval()  # does not have to be trained
     lateral_network = setup_lateral_network(config, fabric)
+
+    if 'load_state_path' in config['run'] and config['run']['load_state_path'] != 'None':
+        config, state = load_run(config, fabric)
+        feature_extractor.load_state_dict(state['feature_extractor'])
+        lateral_network.load_state_dict(state['lateral_network'])
+
+    feature_extractor.eval()  # does not have to be trained
     lateral_network.train()
     if 'store_path' in config['run']['plots'] and config['run']['plots']['store_path'] != 'None':
         fp = Path(config['run']['plots']['store_path'])
         if not fp.exists():
             fp.mkdir(parents=True, exist_ok=True)
     train(config, feature_extractor, lateral_network, train_loader, test_loader)
+
+    if 'store_state_path' in config['run'] and config['run']['store_state_path'] != 'None':
+        save_run(config, fabric, components={'feature_extractor': feature_extractor, 'lateral_network': lateral_network})
 
 
 if __name__ == '__main__':

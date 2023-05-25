@@ -1,9 +1,32 @@
+import warnings
 from typing import Any, Dict, Optional
 
+from deepdiff import DeepDiff
 from lightning.fabric import Fabric
 
 from utils.custom_print import print_info
 
+
+def _warn_different_configs(config: Dict[str, Optional[Any]], config_old: Dict[str, Optional[Any]]):
+    """
+    Print a warning if the two configurations differ.
+    :param config: Current configuration
+    :param config_old: Old configuration
+    """
+    diff = DeepDiff(config_old, config)
+    keys_ignored = ["store_state_path", "load_state_path", "current_epoch", "n_epochs"]
+    removed_items = [r for r in list(diff.get("dictionary_item_removed", [])) if
+                     not bool([k for k in keys_ignored if k in r])]
+    added_items = [a for a in list(diff.get("dictionary_item_added", [])) if
+                   not bool([k for k in keys_ignored if k in a])]
+    changed_items = {c: d for c, d in diff.get("values_changed", {}).items() if
+                     not bool([k for k in keys_ignored if k in c])}
+
+    if len(removed_items) + len(added_items) + len(changed_items) > 0:
+        warnings.warn(
+            f"Configurations Differ:\n\tRemoved Items: {removed_items}\n\tAdded Items: {added_items}\n\tChanged "
+            f"Items: {changed_items}")
+        input("Press Enter to continue...")
 
 def merge_configs(
         config: Dict[str, Optional[Any]],
@@ -15,6 +38,7 @@ def merge_configs(
     :param config_old: Old configuration
     :return: Configuration dict
     """
+    _warn_different_configs(config, config_old)
     config['run']['current_epoch'] = config_old['run']['current_epoch']
     return config
 

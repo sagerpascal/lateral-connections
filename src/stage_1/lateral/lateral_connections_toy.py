@@ -104,6 +104,9 @@ class LateralLayerEfficient(nn.Module):
         self.W.data = self.W.data / (1e-10 + torch.sqrt(torch.sum(self.W.data ** 2, dim=[1, 2, 3], keepdim=True)))
         self.b = torch.zeros((1, self.out_channels, 1, 1), requires_grad=False).to(fabric.device)
 
+        self.W = nn.Parameter(self.W)
+        self.b = nn.Parameter(self.b)
+
         self.optimizer = torch.optim.Adam([self.W, ], lr=self.lr)
 
     def new_sample(self):

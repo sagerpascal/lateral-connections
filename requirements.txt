@@ -9,3 +9,4 @@ scipy~=1.10.1
 sphinx~=7.0.1
 sphinx-press-theme~=0.8.0
 sphinxcontrib-video~=0.1.1
+deepdiff~=6.3.0

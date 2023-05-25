@@ -6,12 +6,14 @@ dataset:
   num_workers: 0
 
 run:
-  n_epochs: 10
+  n_epochs: 2
   current_epoch: 0
   plots:
     enable: True
     only_last_epoch: False
     store_path: "../tmp/test/"
+  store_state_path: None
+  load_state_path: None
 
 
 logging:
