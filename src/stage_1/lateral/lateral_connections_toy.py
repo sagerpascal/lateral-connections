@@ -92,7 +92,6 @@ class LateralLayerEfficient(nn.Module):
         assert self.k <= self.out_channels, "k must be smaller than out_channels"
         assert self.k > 0, "k must be greater than 0"
 
-        print("Mask out background:", self.mask_out_bg, "Moving average:", self.moving_average)
         if self.mask_out_bg:
             self.target_rate = self.target_rate / 10
 
@@ -135,17 +134,16 @@ class LateralLayerEfficient(nn.Module):
         with torch.no_grad():
             realy = (prelimy - self.b)
 
-            if self.moving_average:
-                if self.mov_avg_rate_prev_view > 0 and self.ts in self.prev_activations:
-                    realy = (1 - self.mov_avg_rate_prev_view) * realy + self.mov_avg_rate_prev_view * \
-                            self.prev_activations[self.ts]
-                if self.mov_avg_rate_prev_time > 0 and self.ts - 1 in self.prev_activations:
-                    realy = (1 - self.mov_avg_rate_prev_time) * realy + self.mov_avg_rate_prev_time * \
-                            self.prev_activations[self.ts - 1]
-                if self.mov_avg_rate_prev and self.prev_activation is not None:
-                    realy = (1 - self.mov_avg_rate_prev) * realy + self.mov_avg_rate_prev * self.prev_activation
-                self.prev_activation = realy.detach()
-                self.prev_activations[self.ts] = realy.detach()
+            if self.mov_avg_rate_prev_view > 0 and self.ts in self.prev_activations:
+                realy = (1 - self.mov_avg_rate_prev_view) * realy + self.mov_avg_rate_prev_view * \
+                        self.prev_activations[self.ts]
+            if self.mov_avg_rate_prev_time > 0 and self.ts - 1 in self.prev_activations:
+                realy = (1 - self.mov_avg_rate_prev_time) * realy + self.mov_avg_rate_prev_time * \
+                        self.prev_activations[self.ts - 1]
+            if self.mov_avg_rate_prev and self.prev_activation is not None:
+                realy = (1 - self.mov_avg_rate_prev) * realy + self.mov_avg_rate_prev * self.prev_activation
+            self.prev_activation = realy.detach()
+            self.prev_activations[self.ts] = realy.detach()
 
             # TODO: In order that the channels have more distinct features, we could limit the number of activations
             #  per channel to 1.5x the input activations of the same channel?
@@ -225,7 +223,7 @@ class LateralLayerEfficientNetwork1L(nn.Module):
 
         self.l1 = LateralLayerEfficient(
             self.fabric,
-            in_channels=in_channels + lm_conf["out_channels"] if self.concat_input else in_channels,
+            in_channels=in_channels + lm_conf["l1_params"]["out_channels"] if self.concat_input else in_channels,
             **lm_conf["l1_params"],
         )
 
