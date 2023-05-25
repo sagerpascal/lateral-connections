@@ -53,7 +53,9 @@ def plot_images(
         vmax: Optional[Union[float, int]] = None,
         mask_vmin: Optional[Union[float, int]] = None,
         mask_vmax: Optional[Union[float, int]] = None,
-        plot_colorbar: Optional[bool] = False
+        plot_colorbar: Optional[bool] = False,
+        cmap: Optional[Union[List[str] | str]] = None,
+        interpolation: Optional[Union[List[str] | str]] = 'none',
 ) -> plt.Figure:
     """
     Plot images.
@@ -69,6 +71,8 @@ def plot_images(
     :param mask_vmin: Minimum value of the mask.
     :param mask_vmax: Maximum value of the mask.
     :param plot_colorbar: Plot colorbar.
+    :param cmap: Colormap, either a `str` or a `List[str]`.
+    :param interpolation: Interpolation, either a `str` or a `List[str]`.
     :return: matplotlib Figure.
     """
     if isinstance(images, torch.Tensor) and len(images.shape) == 4:
@@ -89,12 +93,15 @@ def plot_images(
         if not isinstance(titles, list):
             titles = [titles]
 
+    cmaps = cmap if isinstance(cmap, list) else [cmap] * len(images)
+    interpolations = interpolation if isinstance(interpolation, list) else [interpolation] * len(images)
+
     cols = min(max_cols, len(images))
     rows = int(np.ceil(len(images) / cols))
     fig, axes = plt.subplots(rows, cols, figsize=(cols * 2, rows * 2))
     transform = T.ToPILImage()
 
-    for i, (img, lbl) in enumerate(zip(images, titles)):
+    for i, (img, lbl, cmap_, interpolation_) in enumerate(zip(images, titles, cmaps, interpolations)):
         ax = axes[i // cols, i % cols] if cols > 1 and rows > 1 else axes[i % cols] if cols > 1 else axes
         if isinstance(img, torch.Tensor):
             img = img.detach().squeeze().cpu().numpy()  # transform(img.squeeze())
@@ -112,9 +119,10 @@ def plot_images(
             raise ValueError("Image values must be between vmin and vmax.")
 
         if img.shape[-1] == 1 or len(img.shape) == 2:
-            im = ax.imshow(img, cmap='gray', vmin=vmin, vmax=vmax, interpolation='None')
+            cmap_ = 'gray' if cmap_ is None else cmap_
+            im = ax.imshow(img, cmap=cmap_, vmin=vmin, vmax=vmax, interpolation=interpolation_)
         else:
-            im = ax.imshow(img, vmin=vmin, vmax=vmax, interpolation='None')
+            im = ax.imshow(img, vmin=vmin, vmax=vmax, cmap=cmap_, interpolation=interpolation_)
 
         if plot_colorbar:
             divider = make_axes_locatable(ax)
@@ -122,7 +130,7 @@ def plot_images(
             fig.colorbar(im, cax=cax, orientation='vertical')
 
         if masks is not None and mask is not None:
-            ax.imshow(mask, alpha=0.6, cmap='jet', interpolation='none', vmin=mask_vmin, vmax=mask_vmax)
+            ax.imshow(mask, alpha=0.6, cmap='jet', interpolation=interpolation_, vmin=mask_vmin, vmax=mask_vmax)
 
         if lbl is not None:
             lbl = str(lbl.item()) if isinstance(lbl, torch.Tensor) else lbl

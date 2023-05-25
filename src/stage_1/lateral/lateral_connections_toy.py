@@ -1,6 +1,6 @@
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import torch.nn as nn
@@ -17,6 +17,9 @@ from data import plot_images
 from tools import AverageMeter, bin2dec
 from utils import create_video_from_images_ffmpeg, print_logs
 
+HEBBIAN_ALGO = Literal['instar', 'oja', 'vanilla']
+W_INIT = Literal['random', 'zeros']
+
 
 # TODO: In jedem timestep muss ursprüngliche Features berücksichtigt werden!
 # TODO: änhliche Linien über mehrere Timesteps
@@ -29,10 +32,18 @@ class LateralLayerEfficient(nn.Module):
                  fabric: Fabric,
                  in_channels: int,
                  out_channels: int,
-                 locality_size: Optional[int] = 5,
-                 lr: Optional[float] = 0.01,
-                 mask_out_bg: Optional[bool] = True,
-                 moving_average: Optional[bool] = True,
+                 locality_size: Optional[int] = 2,
+                 lr: Optional[float] = 0.0005,
+                 mask_out_bg: Optional[bool] = False,
+                 mov_avg_rate_prev_view: Optional[float] = 0.,
+                 mov_avg_rate_prev_time: Optional[float] = 0.,
+                 mov_avg_rate_prev: Optional[float] = 0.,
+                 hebbian_rule: Optional[HEBBIAN_ALGO] = 'instar',
+                 use_bias: Optional[bool] = True,
+                 k: Optional[int] = 1,
+                 thr_rate: Optional[float] = 0.05,
+                 target_rate: Optional[float] = None,
+                 w_init: Optional[W_INIT] = 'random',
                  ):
         """
         Lateral Layer trained with Hebbian Learning. The input and output of this layer are binary.
@@ -45,7 +56,16 @@ class LateralLayerEfficient(nn.Module):
         example, if locality_size = 2, then each neuron is connected to 5 neurons on each side of it.
         :param lr: Learning rate.
         :param mask_out_bg: Whether to mask out the background.
-        :param moving_average: Whether to apply moving average on the activations.
+        :param mov_avg_rate_prev_view: The rate of the previous view at the same timestep to use for moving average.
+        :param mov_avg_rate_prev_time: The rate of the previous timestep and the same view to use for moving average.
+        :param mov_avg_rate_prev: The rate of the previous activation to use for moving average.
+        :param hebbian_rule: Which Hebbian rule to use.
+        :param use_bias: Whether to use bias.
+        :param k: Number of active neurons per channel (k winner take all).
+        :param thr_rate: The threshold rate, defines how fast the bias adapts to data. Only relevant if `use_bias=True`
+        :param target_rate: The target rate of the neurons (how many should be activate), default is k/out_channels.
+                            Only relevant if `use_bias=True`
+        :param w_init: How to initialize the weights.
         """
         super().__init__()
         self.in_channels = in_channels
@@ -54,24 +74,34 @@ class LateralLayerEfficient(nn.Module):
         self.neib_size = 2 * self.locality_size + 1
         self.lr = lr
         self.mask_out_bg = mask_out_bg
-        self.moving_average = moving_average
+        self.hebbian_rule = hebbian_rule
+        self.use_bias = use_bias
+        self.k = k
+        self.mov_avg_rate_prev_view = mov_avg_rate_prev_view
+        self.mov_avg_rate_prev_time = mov_avg_rate_prev_time
+        self.mov_avg_rate_prev = mov_avg_rate_prev
+        self.thr_rate = thr_rate
+        self.target_rate = self.k / self.out_channels if target_rate is None else target_rate
 
-        print("Mask out background:", self.mask_out_bg, "Moving average:", self.moving_average)
-
-        self.k = 1  # out_channels  # TODO: Currently no winner-take-all, so k is not used
-        self.thr_rate = 0.05  # 10.
-        self.target_rate = self.k / self.out_channels
         self.train_ = True
         self.step = 0
         self.ts = None
         self.prev_activations = {}
         self.prev_activation = None
 
-        if self.mask_out_bg:
-            self.target_rate = self.target_rate / 50
+        assert self.k <= self.out_channels, "k must be smaller than out_channels"
+        assert self.k > 0, "k must be greater than 0"
 
-        self.W = torch.randn((self.out_channels, self.in_channels, self.neib_size, self.neib_size), requires_grad=True,
-                             device=fabric.device)
+        print("Mask out background:", self.mask_out_bg, "Moving average:", self.moving_average)
+        if self.mask_out_bg:
+            self.target_rate = self.target_rate / 10
+
+        weight_shape = (self.out_channels, self.in_channels, self.neib_size, self.neib_size)
+        if w_init == "random":
+            self.W = torch.randn(weight_shape, requires_grad=True, device=fabric.device)
+        elif w_init == "zeros":
+            self.W = torch.zeros(weight_shape, requires_grad=True, device=fabric.device)
+
         self.W.data = self.W.data / (1e-10 + torch.sqrt(torch.sum(self.W.data ** 2, dim=[1, 2, 3], keepdim=True)))
         self.b = torch.zeros((1, self.out_channels, 1, 1), requires_grad=False).to(fabric.device)
 
@@ -96,7 +126,7 @@ class LateralLayerEfficient(nn.Module):
         self.target_rate = self.k / self.out_channels
         assert False, "Should this be called?"
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tuple[Tensor, Tensor]:
         self.optimizer.zero_grad()
 
         prelimy = F.conv2d(x, self.W, padding="same")
@@ -106,51 +136,71 @@ class LateralLayerEfficient(nn.Module):
             realy = (prelimy - self.b)
 
             if self.moving_average:
-                # if self.ts in self.prev_activations:
-                #     realy = .4 * realy + (1 - .4) * self.prev_activations[self.ts]
-                #if self.ts-1 in self.prev_activations:
-                #    realy = .5 * realy + (1-.5) * self.prev_activations[self.ts-1]
-                if self.prev_activation is not None:
-                    realy = .7 * realy + (1 - .7) * self.prev_activation
+                if self.mov_avg_rate_prev_view > 0 and self.ts in self.prev_activations:
+                    realy = (1 - self.mov_avg_rate_prev_view) * realy + self.mov_avg_rate_prev_view * \
+                            self.prev_activations[self.ts]
+                if self.mov_avg_rate_prev_time > 0 and self.ts - 1 in self.prev_activations:
+                    realy = (1 - self.mov_avg_rate_prev_time) * realy + self.mov_avg_rate_prev_time * \
+                            self.prev_activations[self.ts - 1]
+                if self.mov_avg_rate_prev and self.prev_activation is not None:
+                    realy = (1 - self.mov_avg_rate_prev) * realy + self.mov_avg_rate_prev * self.prev_activation
                 self.prev_activation = realy.detach()
+                self.prev_activations[self.ts] = realy.detach()
 
-            # TODO: In order that the channels have more distinct features, we could limit the number of activations per channel to 1.5x the input activations of the same channel?
-            # TODO: We could use different Filters, e.g. some layers can access only some input filters (number of combinations: 2^in_channels)
+            # TODO: In order that the channels have more distinct features, we could limit the number of activations
+            #  per channel to 1.5x the input activations of the same channel?
+            # TODO: We could use different Filters, e.g. some layers can access only some input filters (number of
+            #  combinations: 2^in_channels)
+
+            internal_activations = realy.detach()
 
             # k winner take all
             smallest_value_per_channel = torch.amin(realy, dim=(2, 3)) + 0.0001
             tk = torch.topk(realy.data, self.k, dim=1, largest=True)[0]
             realy.data[realy.data < tk.data[:, -1, :, :][:, None, :, :]] = 0
             if self.mask_out_bg:
-                realy.data[realy.data <= smallest_value_per_channel.view(smallest_value_per_channel.shape +(1, 1))] = 0  # mask out background...
+                realy.data[realy.data <= smallest_value_per_channel.view(
+                    smallest_value_per_channel.shape + (1, 1))] = 0  # mask out background...
 
             # binary output
-            realy.data = (realy.data > 0).float()
+            threshold = (torch.sort(realy.view(realy.shape[0], -1), dim=1, descending=True)[0][:,
+                         int(realy.numel() / realy.shape[0] / realy.shape[1] * 0.2)])
+            realy.data = (realy.data > threshold.view(realy.shape[0], 1, 1, 1)).float()
 
         # Then we compute the surrogate output yforgrad, whose gradient computations produce the desired Hebbian output
         # Note: We must not include thresholds here, as this would not produce the expected gradient expressions. The
         # actual values will come from realy, which does include thresholding.
-        yforgrad = prelimy - 1 / 2 * torch.sum(self.W * self.W, dim=(1, 2, 3))[None, :, None, None]  # Instar rule, dw ~= y(x-w)
-        # yforgrad = prelimy - 1/2 * torch.sum(self.W * self.W, dim=(1,2,3))[None,:, None, None] * realy.data # Oja's rule, dw ~= y(x-yw)
-        # yforgrad = prelimy
+        if self.hebbian_rule == "instar":
+            yforgrad = prelimy - 1 / 2 * torch.sum(self.W * self.W, dim=(1, 2, 3))[None, :, None,
+                                         None]  # Instar rule, dw ~= y(x-w)
+        elif self.hebbian_rule == "oja":
+            yforgrad = prelimy - 1 / 2 * torch.sum(self.W * self.W, dim=(1, 2, 3))[None, :, None,
+                                         None] * realy.data  # Oja's rule, dw ~= y(x-yw)
+        elif self.hebbian_rule == "vanilla":
+            yforgrad = prelimy
+        else:
+            assert False, "Unknown hebbian rule"
+
         yforgrad.data = realy.data  # We force the value of yforgrad to be the "correct" y
 
         loss = torch.sum(-1 / 2 * yforgrad * yforgrad)
         if self.train_:
             loss.backward()
-        if self.step > 100 and self.train_:  # No weight modifications before batch 100 (burn-in) or after learning
-            # epochs (during data accumulation for training / testing)
-            self.optimizer.step()
-            self.W.data = self.W.data / (1e-10 + torch.sqrt(
-                torch.sum(self.W.data ** 2, dim=[1, 2, 3], keepdim=True)))  # Weight normalization
+            if self.step > 100:  # No weight modifications before batch 100 (burn-in) or after learning
+                # epochs (during data accumulation for training / testing)
+                self.optimizer.step()
+                self.W.data = self.W.data / (1e-10 + torch.sqrt(
+                    torch.sum(self.W.data ** 2, dim=[1, 2, 3], keepdim=True)))  # Weight normalization
 
-        with torch.no_grad():
-            # Threshold adaptation is based on realy, i.e. the one used for plasticity. Always binarized (firing vs.
-            # not firing).
-            self.b += self.thr_rate * (torch.mean((realy.data > 0).float(), dim=(0, 2, 3))[None, :, None, None] - self.target_rate)
+        if self.use_bias:
+            with torch.no_grad():
+                # Threshold adaptation is based on realy, i.e. the one used for plasticity. Always binarized (firing vs.
+                # not firing).
+                self.b += self.thr_rate * (
+                        torch.mean((realy.data > 0).float(), dim=(0, 2, 3))[None, :, None, None] - self.target_rate)
 
         self.step += 1
-        return realy.detach()
+        return internal_activations, realy.detach()
 
 
 class LateralLayerEfficientNetwork1L(nn.Module):
@@ -168,18 +218,15 @@ class LateralLayerEfficientNetwork1L(nn.Module):
         super().__init__()
         self.conf = conf
         self.fabric = fabric
+        self.avg_meter_t = AverageMeter()
         self.concat_input = True
         lm_conf = self.conf["lateral_model"]
         in_channels = self.conf["feature_extractor"]["out_channels"]
 
         self.l1 = LateralLayerEfficient(
             self.fabric,
-            in_channels= in_channels + lm_conf["channels"] if self.concat_input else in_channels,
-            out_channels=lm_conf["channels"],
-            locality_size=lm_conf['locality_size'],
-            lr=lm_conf['lr'],
-            mask_out_bg=lm_conf['mask_bg'],
-            moving_average=lm_conf['moving_average'],
+            in_channels=in_channels + lm_conf["out_channels"] if self.concat_input else in_channels,
+            **lm_conf["l1_params"],
         )
 
     def new_sample(self):
@@ -191,28 +238,78 @@ class LateralLayerEfficientNetwork1L(nn.Module):
     def set_train(self, train: bool):
         self.l1.train_ = train
 
-    def forward(self, x: Tensor) -> Tuple[List[int], Tensor, int]:
+    def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         """
         Forward pass over multiple timesteps
         :param x: The input tensor (extracted features of the image)
-        :return: List of changes, Features extracted by the lateral layers, number of timesteps
+        :return: Extracted features thar were fed into the lateral layer (binarized version of features from feature
+        extractor), Features extracted by the lateral layers (binarized), Features extracted by the lateral layers (as
+        float)
         """
-        t = 0
 
-        changes, features = [], []
-        x_in = torch.cat([x, torch.zeros_like(x)], dim=1) if self.concat_input else x
+        # TODO: Probabilistic neuron testen, zuerst mit WTA
+        # TODO: Softere Art von WTA - wie kann Symmetrie gebrochen werden?
 
-        for t in range(self.conf["lateral_model"]["max_timesteps"]):
-            self.l1.update_ts(t)
-            x_old = x_in
-            z = self.l1(x_in)
-            x_in = torch.cat([x, z], dim=1) if self.concat_input else z
-            change = F.l1_loss(x_old, x_in).item()
-            changes.append(change)
-            features.append(z)
-            # if change < self.conf["lateral_model"]["change_threshold"]:
-            #     break
-        return changes, torch.stack(features, dim=1), t
+        self.l1.new_sample()
+        z = None
+
+        input_features, lateral_features, lateral_features_f = [], [], []
+        for view_idx in range(x.shape[1]):
+            # prepare input view
+            x_view = x[:, view_idx, ...]
+            x_view = torch.where(x_view > 0., 1., 0.)
+            input_features.append(x_view)
+
+            if z is None and self.concat_input:
+                z = torch.zeros_like(x_view)
+
+            t = 0
+            features, features_float = [], []
+            for t in range(self.conf["lateral_model"]["max_timesteps"]):
+                self.l1.update_ts(t)
+                # x_old = x_in
+                x_in = torch.cat([x_view, z], dim=1) if self.concat_input else z
+                z_float, z = self.l1(x_in)
+                features.append(z)
+                features_float.append(z_float)
+                # if F.l1_loss(x_old, x_in).item() < self.conf["lateral_model"]["change_threshold"]:
+                #     break
+
+            lateral_features.append(torch.stack(features, dim=1))
+            lateral_features_f.append(torch.stack(features_float, dim=1))
+            self.avg_meter_t(t)
+
+        return torch.stack(input_features, dim=1), torch.stack(lateral_features, dim=1), torch.stack(lateral_features_f,
+                                                                                                     dim=1)
+
+    def get_model_weight_stats(self) -> Dict[str, float]:
+        """
+        Get statistics of the model weights.
+        :return: Dictionary with statistics.
+        """
+        stats = {}
+        for layer, weight in self.get_layer_weights().items():
+            stats_ = {
+                f"weight_mean_{layer}": torch.mean(weight).item(),
+                f"weight_std_{layer}": torch.std(weight).item(),
+                f"weight_min_{layer}": torch.min(weight).item(),
+                f"weight_max_{layer}": torch.max(weight).item(),
+                f"weight_above_0.9_{layer}": torch.sum(weight >= 0.9).item() / weight.numel(),
+                f"weight_below_-0.9_{layer}": torch.sum(weight <= -0.9).item() / weight.numel(),
+            }
+            stats = stats | stats_
+        return stats
+
+    def get_logs(self) -> Dict[str, float]:
+        """
+        Get logs for the current epoch.
+        :return: Dictionary with logs.
+        """
+        logs = {
+            "avg_t": self.avg_meter_t.mean,
+        }
+        self.avg_meter_t.reset()
+        return logs | self.get_model_weight_stats()
 
 
 class LateralNetwork(pl.LightningModule):
@@ -230,73 +327,12 @@ class LateralNetwork(pl.LightningModule):
         self.conf = conf
         self.fabric = fabric
         self.model = self.configure_model()
-        self.avg_meter_t = AverageMeter()
 
-    def forward(self, x: Tensor) -> Tuple[List[int], Tensor, int]:
-        """
-        Forward pass through the model.
-        :param x: Input image.
-        :return:  List of changes, Features extracted by the lateral layers, number of timesteps
-        """
-        return self.model(x)
-
-    def forward_steps_multiple_views_through_time(self, x: Tensor) -> Tuple[
-        List[Tensor], List[List[Tensor]], List[float]]:
-        """
-        Forward pass through the model over multiple timesteps. The number of timesteps depends on the change
-        threshold and the maximum number of timesteps (i.e. the forward pass through time is cancel if the activations'
-        change is below a given threshold).
-        :param x: Features extracted from the image.
-        :return: List of features extracted by the feature extractor, List of features build by lateral connections,
-        list of changes
-        """
-        # if x.unique().shape[0] > 2 or x.unique(sorted=True) != torch.tensor([0, 1]):
-        # x = torch.bernoulli(x.clip(0, 1))
-        # x = torch.where(x > 0.5, 1., 0.)
-
-        self.model.new_sample()
-
-        changes, input_features, lateral_features = [], [], []
-        for view_idx in range(x.shape[1]):
-            x_view = x[:, view_idx, ...]
-            x_view = torch.where(x_view > 0., 1., 0.)
-            input_features.append(x_view)
-            changes_, features_, t = self.forward(x_view)
-            changes.append(1.)
-            changes.append(changes_)
-            lateral_features.append(features_)
-            self.avg_meter_t(t)
-
-        return torch.stack(input_features, dim=1), torch.stack(lateral_features, dim=1), changes
+    def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
+        return self.model.forward(x)
 
     def get_logs(self) -> Dict[str, float]:
-        """
-        Get logs for the current epoch.
-        :return: Dictionary with logs.
-        """
-        logs = {
-            "avg_t": self.avg_meter_t.mean,
-        }
-        self.avg_meter_t.reset()
-        return logs | self.get_model_weight_stats()
-
-    def get_model_weight_stats(self) -> Dict[str, float]:
-        """
-        Get statistics of the model weights.
-        :return: Dictionary with statistics.
-        """
-        stats = {}
-        for layer, weight in self.model.get_layer_weights().items():
-            stats_ = {
-                f"weight_mean_{layer}": torch.mean(weight).item(),
-                f"weight_std_{layer}": torch.std(weight).item(),
-                f"weight_min_{layer}": torch.min(weight).item(),
-                f"weight_max_{layer}": torch.max(weight).item(),
-                f"weight_above_0.9_{layer}": torch.sum(weight >= 0.9).item() / weight.numel(),
-                f"weight_below_-0.9_{layer}": torch.sum(weight <= -0.9).item() / weight.numel(),
-            }
-            stats = stats | stats_
-        return stats
+        return self.model.get_logs()
 
     def plot_model_weights(self):
         """
@@ -337,7 +373,8 @@ class LateralNetwork(pl.LightningModule):
                      img: List[Tensor],
                      features: List[Tensor],
                      input_features: List[Tensor],
-                     lateral_features: List[Tensor]):
+                     lateral_features: List[Tensor],
+                     lateral_features_f: List[Tensor]):
         """
         Plot the features extracted from a single sample.
         :param img: A list of samples, i.e. of batches of the original images (shape is (B, V, C, H, W) where V is
@@ -351,6 +388,7 @@ class LateralNetwork(pl.LightningModule):
         :param lateral_features: A list of samples, i.e. batches of the features extracted from the lateral network
         over time (shape is (B, V, T, C, H, W) where V is the number of augmented views, T is the number of
         timesteps, and C is the number of output channels from the lateral layer).
+        lateral_features_f: Same as lateral_features but the intermediate float value before binarization.
         """
 
         def _plot_input_features(img, features, input_features, fig_fp: Optional[str] = None):
@@ -380,6 +418,19 @@ class LateralNetwork(pl.LightningModule):
             plot_images(images=plt_images, titles=plt_titles, max_cols=lateral_features.shape[2], plot_colorbar=True,
                         vmin=0, vmax=1, fig_fp=fig_fp)
 
+        def _plot_lateral_heat_map(lateral_features_f, fig_fp: Optional[str] = None):
+            max_views = min(3, lateral_features_f.shape[0])
+            v_min, v_max = lateral_features_f[:max_views].min(), lateral_features_f[:max_views].max()
+            plt_images, plt_titles = [], []
+            for view_idx in range(max_views):
+                for time_idx in range(lateral_features_f.shape[1]):
+                    for feature_idx in range(lateral_features_f.shape[2]):
+                        plt_images.append(lateral_features_f[view_idx, time_idx, feature_idx])
+                        plt_titles.append(
+                            f"L={1 if time_idx == 0 else 2} V={view_idx} T={time_idx} C={feature_idx}")
+            plot_images(images=plt_images, titles=plt_titles, max_cols=lateral_features_f.shape[2], plot_colorbar=True,
+                        fig_fp=fig_fp, cmap='hot', interpolation='nearest', vmin=v_min, vmax=v_max)
+
         def _plot_lateral_output(img, lateral_features, fig_fp: Optional[str] = None):
             max_views = 10
             plt_images, plt_titles, plt_masks = [], [], []
@@ -395,16 +446,18 @@ class LateralNetwork(pl.LightningModule):
                         vmin=0, vmax=1, mask_vmin=0, mask_vmax=lateral_features.shape[2] + 1, fig_fp=fig_fp)
 
         fig_fp = self.conf['run']['plots'].get('store_path', None)
-        for i, (img_i, features_i, input_features_i, lateral_features_i) in enumerate(zip(img, features, input_features,
-                                                                           lateral_features)):
+        for i, (img_i, features_i, input_features_i, lateral_features_i, lateral_features_f_i) in enumerate(
+                zip(img, features, input_features, lateral_features, lateral_features_f)):
             for batch_idx in range(img_i.shape[0]):
                 if fig_fp is not None:
                     fig_fp = Path(fig_fp)
-                    base_name = f"sample_{i}_batch_idx_{batch_idx}"
+                base_name = f"sample_{i}_batch_idx_{batch_idx}"
                 _plot_input_features(img_i[batch_idx], features_i[batch_idx], input_features_i[batch_idx],
                                      fig_fp=fig_fp / f'{base_name}_input_features.png')
                 _plot_lateral_activation_map(lateral_features_i[batch_idx],
                                              fig_fp=fig_fp / f'{base_name}_lateral_act_maps.png')
+                _plot_lateral_heat_map(lateral_features_f_i[batch_idx],
+                                       fig_fp=fig_fp / f'{base_name}_lateral_heat_maps.png')
                 _plot_lateral_output(img_i[batch_idx], lateral_features_i[batch_idx],
                                      fig_fp=fig_fp / f'{base_name}_lateral_output.png')
 

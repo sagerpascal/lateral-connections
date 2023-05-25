@@ -10,7 +10,7 @@ run:
   current_epoch: 0
   plots:
     enable: True
-    only_last_epoch: True
+    only_last_epoch: False
     store_path: "../tmp/test/"
 
 
@@ -29,11 +29,17 @@ feature_extractor:
   out_channels: 4
 
 lateral_model:
-  locality_size: 2
-  alpha: 0.09 #0.905
-  lr: 0.0005
-  channels: 4
-  max_timesteps: 3  # 2000
-  change_threshold: 0.00001
-  mask_bg: False
-  moving_average: False
+  l1_params:
+    out_channels: 4
+    locality_size: 2
+    lr: 0.0005
+    mask_out_bg: False
+    mov_avg_rate_prev_view: 0.
+    mov_avg_rate_prev_time: 0.
+    mov_avg_rate_prev: 0.
+    hebbian_rule: 'instar'
+    use_bias: True
+    k: 1
+    thr_rate: 0.05
+    target_rate: null
+    w_init: 'random'
