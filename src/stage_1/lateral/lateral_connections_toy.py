@@ -89,6 +89,9 @@ class LateralLayerEfficient(nn.Module):
         self.prev_activations = {}
         self.prev_activation = None
 
+        if isinstance(self.target_rate, list):
+            self.target_rate = torch.tensor(self.target_rate, device=fabric.device).view(1, -1, 1, 1)
+
         assert self.k <= self.out_channels, "k must be smaller than out_channels"
         assert self.k > 0, "k must be greater than 0"
 
@@ -100,6 +103,13 @@ class LateralLayerEfficient(nn.Module):
             self.W = torch.randn(weight_shape, requires_grad=True, device=fabric.device)
         elif w_init == "zeros":
             self.W = torch.zeros(weight_shape, requires_grad=True, device=fabric.device)
+        elif w_init == "identity":
+            self.W = torch.zeros(weight_shape, device=fabric.device)
+            for oc in range(self.out_channels):
+                for ic in range(self.in_channels):
+                    if oc == ic:
+                        self.W[oc, ic, self.locality_size, self.locality_size] = 1
+            self.W.requires_grad=True
 
         self.W.data = self.W.data / (1e-10 + torch.sqrt(torch.sum(self.W.data ** 2, dim=[1, 2, 3], keepdim=True)))
         self.b = torch.zeros((1, self.out_channels, 1, 1), requires_grad=False).to(fabric.device)
@@ -163,10 +173,24 @@ class LateralLayerEfficient(nn.Module):
                 realy.data[realy.data <= smallest_value_per_channel.view(
                     smallest_value_per_channel.shape + (1, 1))] = 0  # mask out background...
 
-            # binary output
-            threshold = (torch.sort(realy.view(realy.shape[0], -1), dim=1, descending=True)[0][:,
-                         int(realy.numel() / realy.shape[0] / realy.shape[1] * 0.2)])
-            realy.data = (realy.data > threshold.view(realy.shape[0], 1, 1, 1)).float()
+            realy.data = (realy.data > 0.).float()
+
+            # Adaptive Threshold
+            # if self.step <= 100_000:
+            #     ratio = max((100_000 - self.step) / 100_000, 0)
+            #     realy.data = ((x[:, :x.shape[1] // 2, ...] * ratio + realy.data * (1 - ratio)) > 0.5).float()
+#
+            #     realy.data = (realy.data > 0.).float()
+
+            # # binary output
+            # threshold = (torch.sort(realy.view(realy.shape[0], -1), dim=1, descending=True)[0][:,
+            #              int(realy.numel() / realy.shape[0] / realy.shape[1] * 0.2)])
+#
+            # realy.data = (realy.data > threshold.view(realy.shape[0], 1, 1, 1)).float()
+
+
+
+
 
         # Then we compute the surrogate output yforgrad, whose gradient computations produce the desired Hebbian output
         # Note: We must not include thresholds here, as this would not produce the expected gradient expressions. The
@@ -223,10 +247,17 @@ class LateralLayerEfficientNetwork1L(nn.Module):
         self.concat_input = True
         lm_conf = self.conf["lateral_model"]
         in_channels = self.conf["feature_extractor"]["out_channels"]
+        out_channels = self.conf["feature_extractor"]["out_channels"]
+        if self.concat_input:
+            in_channels *= 2
+        if self.conf["feature_extractor"]["add_bg_channel"]:
+            in_channels += 1
+            out_channels += 1
 
         self.l1 = LateralLayerEfficient(
             self.fabric,
-            in_channels=in_channels + lm_conf["l1_params"]["out_channels"] if self.concat_input else in_channels,
+            in_channels=in_channels,
+            out_channels=out_channels,
             **lm_conf["l1_params"],
         )
 

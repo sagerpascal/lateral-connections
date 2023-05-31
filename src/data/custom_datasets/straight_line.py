@@ -109,11 +109,12 @@ class StraightLine(Dataset):
         """
         range_ = 2
         (x1, y1), (x2, y2) = coords
-
-        x1 += random.randint(-range_, range_)
-        y1 += random.randint(-range_, range_)
-        x2 += random.randint(-range_, range_)
-        y2 += random.randint(-range_, range_)
+        
+        if range_ > 0:
+            x1 += random.randint(-range_, range_)
+            y1 += random.randint(-range_, range_)
+            x2 += random.randint(-range_, range_)
+            y2 += random.randint(-range_, range_)
 
         return (x1, y1), (x2, y2)
 

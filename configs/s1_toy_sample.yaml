@@ -29,20 +29,20 @@ logging:
 
 feature_extractor:
   out_channels: 4
+  add_bg_channel: False
 
 lateral_model:
   max_timesteps: 3
   l1_params:
-    out_channels: 4
-    locality_size: 2
+    locality_size: 4
     lr: 0.0005
     mask_out_bg: False
     mov_avg_rate_prev_view: 0.
     mov_avg_rate_prev_time: 0.
     mov_avg_rate_prev: 0.
     hebbian_rule: 'instar'
-    use_bias: True
+    use_bias: False
     k: 1
     thr_rate: 0.05
-    target_rate: null
-    w_init: 'random'
+    target_rate: [0.05, 0.05, 0.05, 0.05, 0.8] #null
+    w_init: 'identity'

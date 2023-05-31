@@ -17,10 +17,11 @@ class Conv2dFixedFilters(nn.Module):
     Fixed 2D convolutional layer with 4 filters that detect straight lines.
     """
 
-    def __init__(self, fabric: Fabric):
+    def __init__(self, fabric: Fabric, add_bg_channel: Optional[bool] = False):
         """
         Initializes the layer with the fixed filters.
         :param fabric: Fabric instance.
+        :param add_bg_channel: Whether to add a background channel to the input.
         """
         super(Conv2dFixedFilters, self).__init__()
         self.weight = torch.tensor([[[[-1, +2, -1],
@@ -36,14 +37,20 @@ class Conv2dFixedFilters(nn.Module):
                                       [-1, +2, -1],
                                       [-1, -1, +2]]],
                                     ], dtype=torch.float32, requires_grad=False).to(fabric.device)
-        # self.weight = torch.tensor([[[[-1, +1, -1],
-        #                               [-1, +1, -1],
-        #                               [-1, +1, -1]]],
-        #                             [[[-1, -1, -1],
-        #                               [+1, +1, +1],
-        #                               [-1, -1, -1]]],
-        #                             ], dtype=torch.float32, requires_grad=False).to(fabric.device)
         self.weight = self.weight / 3
+        self.add_bg_channel = add_bg_channel
+
+    def apply_conv(self, x: Tensor) -> Tensor:
+        """
+        Performs a 2D convolution with the fixed filters.
+        :param x: Image to perform the convolution on.
+        :return: Extracted features.
+        """
+        x = F.conv2d(x, self.weight, padding="same")
+        if self.add_bg_channel:
+            background = torch.where(torch.sum(x, dim=1, keepdim=True) == 0., 1., 0.)
+            x = torch.cat([x, background], dim=1)
+        return x
 
     def forward(self, x: Tensor) -> Tensor:
         """
@@ -54,10 +61,10 @@ class Conv2dFixedFilters(nn.Module):
         if len(x.shape) == 5:
             result = []
             for idx in range(x.shape[1]):
-                result.append(F.conv2d(x[:, idx, ...], self.weight, padding="same"))
+                result.append(self.apply_conv(x[:, idx, ...]))
             return torch.stack(result, dim=1)
         else:
-            return F.conv2d(x, self.weight, padding="same")
+            return self.apply_conv(x)
 
 
 class FixedDogFilter(nn.Module):
@@ -65,17 +72,32 @@ class FixedDogFilter(nn.Module):
     Fixed 2D convolutional layer with a DoG filter.
     """
 
-    def __init__(self, filter_size, fabric: Fabric):
+    def __init__(self, filter_size, fabric: Fabric, add_bg_channel: Optional[bool] = False):
         """
         Initializes the layer with the fixed filters.
         :param filter_size: Size of the DoG filter.
         :param fabric: Fabric instance.
+        :param add_bg_channel: Whether to add a background channel to the input.
         """
         super().__init__()
         gk1 = np.zeros((filter_size, filter_size))
         gk1[filter_size // 2, filter_size // 2] = 1
         gk2 = (scipy.ndimage.gaussian_filter(gk1, sigma=.5) - scipy.ndimage.gaussian_filter(gk1, sigma=1.0))
-        self.dog = torch.Tensor(gk2[np.newaxis, np.newaxis, :, :]).to(fabric.device)  # Adding two singleton dimensions for input and output channels (1 each)
+        self.dog = torch.Tensor(gk2[np.newaxis, np.newaxis, :, :]).to(
+            fabric.device)  # Adding two singleton dimensions for input and output channels (1 each)
+        self.add_bg_channel = add_bg_channel
+
+    def apply_conv(self, x: Tensor) -> Tensor:
+        """
+        Performs a 2D convolution with the fixed filters.
+        :param x: Image to perform the convolution on.
+        :return: Extracted features.
+        """
+        x = F.conv2d(x, self.weight, padding="same")
+        if self.add_bg_channel:
+            background = torch.where(torch.sum(x, dim=1, keepdim=True) == 0., 1., 0.)
+            x = torch.cat([x, background], dim=1)
+        return x
 
     def forward(self, x: Tensor) -> Tensor:
         """
@@ -86,10 +108,10 @@ class FixedDogFilter(nn.Module):
         if len(x.shape) == 5:
             result = []
             for idx in range(x.shape[1]):
-                result.append(F.conv2d(x[:, idx, ...], self.dog, padding="same"))
+                result.append(self.apply_conv(x[:, idx, ...]))
             return torch.stack(result, dim=1)
         else:
-            return F.conv2d(x, self.dog, padding="same")
+            return self.apply_conv(x)
 
 
 class FixedFilterFeatureExtractor(pl.LightningModule):
@@ -121,7 +143,7 @@ class FixedFilterFeatureExtractor(pl.LightningModule):
            Configures the model.
            :return: The model.
            """
-        return Conv2dFixedFilters(self.fabric)
+        return Conv2dFixedFilters(self.fabric, add_bg_channel=self.conf["feature_extractor"]["add_bg_channel"])
         # return FixedDogFilter(filter_size=12, fabric=self.fabric)
 
     def visualize_encodings(self, x: Tensor):
@@ -136,8 +158,8 @@ class FixedFilterFeatureExtractor(pl.LightningModule):
         for b in range(x.shape[0]):
             images_, titles_ = [x[b]], [f"Orig."]
             for f in range(z.shape[1]):
-                images_.append(z[b, f:f+1, ...])
-                titles_.append(f"Filter {f+1}")
+                images_.append(z[b, f:f + 1, ...])
+                titles_.append(f"Filter {f + 1}")
             images.extend(images_)
             titles.extend(titles_)
         plot_images(images=images, titles=titles, max_cols=5, vmin=0., vmax=1.)
