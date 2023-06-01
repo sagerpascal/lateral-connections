@@ -1,0 +1,118 @@
+Status 1 June, 2023
+===================
+
+Problem 1: The Activations look blurred
+---------------------------------------
+
+.. image:: /_static/results/230601/1_1.png
+  :width: 400
+  :alt: Blurred Activations
+
+- The images are binary, the feature extractor uses 4 pre-defined filters to extract features from the image.
+- The lateral layer implements the lateral support as a convolutional layer with 4 filters. However, these filters
+  lead to blurred activations.
+
+Presumed Reason
+~~~~~~~~~~~~~~~
+
+The weights of the lateral layer are initialized with random values. Thus, the output values of the lateral layer
+are blurred. By using Hebbian learning, the statistic between the (unblurred) input and the (blurred) output is
+learned.
+
+Possible Solution
+~~~~~~~~~~~~~~~~~
+
+The weights cannot be initialized randomly. Instead, they should be initialized so that the output of the lateral
+layer is similar to its input. Afterwards, the weights are updated using the Hebbian learning rule. Thus, the
+statistic between the input and the output is learned.
+
+.. image:: /_static/results/230601/1_2.png
+  :width: 400
+  :alt: Weight Matrix
+
+Just applying Hebbian updates to these weights does not work. Without winner-take-all, all weights and all output
+channels are similar.
+
+With WTA, the activations look rather random:
+
+.. video:: ../_static/results/230601/1_wta.mp4
+   :width: 450
+
+.. image:: /_static/results/230601/1_wta.png
+  :width: 200
+
+When a bias is added, only one single channel is active at every position (independent of the input).
+
+Since there wasn't much progress, the task was simplified: No timesteps and no changing views are used. Furthermore,
+the line is always the same at a predefined position.
+
+.. image:: /_static/results/230601/1_3.png
+  :width: 800
+
+The third channel captures the line quite well without any blurring. It also seems to work quite well with two types
+of lines (note, since the background is just black, a random channel gets activated by winner-take-all):
+
+.. image:: /_static/results/230601/1_4.png
+  :width: 800
+
+The weights indicate that the model just learns to retain the input and some "surrounding" features are added.
+
+When using the same setting as above with multiple timesteps, only one channel represents the line and the activations
+depicting the line are blurred:
+
+.. image:: /_static/results/230601/1_5.png
+  :width: 800
+
+
+
+
+Problem 2: Missing robustness against noise
+-------------------------------------------
+
+When noise is added to the test images, the activations look like this:
+
+.. image:: /_static/results/230601/2_1.jpg
+  :width: 200
+  :alt: Noisy activations
+
+Thus, the activations are not robust against noise. The model learns rather to segment the foreground from the
+background than to extract features that are typical for lines.
+
+Presumed Reason
+~~~~~~~~~~~~~~~
+
+One reason (but probably not the only one) is that the feature extractor creates features from noisy pixels that
+look like small lines.
+
+.. image:: /_static/results/230601/2_2.png
+  :width: 600
+  :alt: Features extracted from noidy images
+
+The lateral layer, on the other hand, does not ensure that the lines are long enough and are actual lines.
+Therefore, the lateral connected neighborhood should be bigger than 3x3 pixels. However, this leads to many more
+valid connections and thus requires using much more channels.
+
+Questions
+~~~~~~~~~
+
+- How many channels should the lateral layer have?
+- How big should the lateral connected neighborhood be?
+- Do we need a minimal length for the lines? Or should we work with pre-defined lines only?
+- The probabilistic neuron could learn to ignore noise. Do we need some kind of adaptive probability?
+- Do we need noise during training? Or should we train without noise and add noise only during testing?
+
+
+Problem 3: One Channel is active for all pixels
+-----------------------------------------------
+
+Usually, one channel is active and represent the line, while one of the other channels represents background (see images above).
+Therefore, the activations do not comprise different features but rather segment foreground from background.
+However, when an adaptive threshold is used and only the most relevant features are kept, the activations look like this:
+
+.. image:: /_static/results/230601/3_1.jpg
+  :width: 200
+  :alt: Strongest activations
+
+This suggest that the feature strength must be considered more carefully, e.g. by using the probabilistic neuron
+with an adaptive threshold. However, it is unclear how the threshold should be adapted without incorporating
+a lot of knowledge about the data (without manual engineering).

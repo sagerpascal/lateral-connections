@@ -40,3 +40,13 @@ conda update ffmpeg
 pip install ffcv
 pip install -r requirements.txt
 ```
+
+## Create documentation
+
+Locally:
+```bash
+cd docs
+make clean html
+```
+
+On GitHub: Push to main branch
