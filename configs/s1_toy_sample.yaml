@@ -32,10 +32,11 @@ feature_extractor:
   add_bg_channel: False
 
 lateral_model:
-  max_timesteps: 3
+  channels: 4
+  max_timesteps: 5
   l1_params:
-    locality_size: 4
-    lr: 0.0005
+    locality_size: 2
+    lr: 0.00005
     mask_out_bg: False
     mov_avg_rate_prev_view: 0.
     mov_avg_rate_prev_time: 0.

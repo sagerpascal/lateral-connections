@@ -137,11 +137,11 @@ def plot_images(
             ax.set_title(lbl)
         ax.set(xticklabels=[], yticklabels=[], xticks=[], yticks=[])
 
+    plt.tight_layout()
     if suptitle is not None:
         fig.suptitle(suptitle)
     if fig_fp is not None:
         plt.savefig(fig_fp)
-    plt.tight_layout()
     if show_plot:
         plt.show()
     else:

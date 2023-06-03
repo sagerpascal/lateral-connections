@@ -18,7 +18,7 @@ from tools import AverageMeter, bin2dec
 from utils import create_video_from_images_ffmpeg, print_logs
 
 HEBBIAN_ALGO = Literal['instar', 'oja', 'vanilla']
-W_INIT = Literal['random', 'zeros']
+W_INIT = Literal['random', 'zeros', 'identity']
 
 
 # TODO: In jedem timestep muss ursprüngliche Features berücksichtigt werden!
@@ -43,7 +43,7 @@ class LateralLayerEfficient(nn.Module):
                  k: Optional[int] = 1,
                  thr_rate: Optional[float] = 0.05,
                  target_rate: Optional[float] = None,
-                 w_init: Optional[W_INIT] = 'random',
+                 w_init: Optional[W_INIT] = 'identity',
                  ):
         """
         Lateral Layer trained with Hebbian Learning. The input and output of this layer are binary.
@@ -244,12 +244,10 @@ class LateralLayerEfficientNetwork1L(nn.Module):
         self.conf = conf
         self.fabric = fabric
         self.avg_meter_t = AverageMeter()
-        self.concat_input = True
+
         lm_conf = self.conf["lateral_model"]
-        in_channels = self.conf["feature_extractor"]["out_channels"]
-        out_channels = self.conf["feature_extractor"]["out_channels"]
-        if self.concat_input:
-            in_channels *= 2
+        out_channels = self.conf["lateral_model"]["channels"]
+        in_channels = self.conf["feature_extractor"]["out_channels"] + out_channels
         if self.conf["feature_extractor"]["add_bg_channel"]:
             in_channels += 1
             out_channels += 1
@@ -292,15 +290,15 @@ class LateralLayerEfficientNetwork1L(nn.Module):
             x_view = torch.where(x_view > 0., 1., 0.)
             input_features.append(x_view)
 
-            if z is None and self.concat_input:
-                z = torch.zeros_like(x_view)
+            if z is None:
+                z = torch.zeros((x_view.shape[0], self.l1.out_channels, x_view.shape[2], x_view.shape[3]), device=x.device)
 
             t = 0
             features, features_float = [], []
             for t in range(self.conf["lateral_model"]["max_timesteps"]):
                 self.l1.update_ts(t)
                 # x_old = x_in
-                x_in = torch.cat([x_view, z], dim=1) if self.concat_input else z
+                x_in = torch.cat([x_view, z], dim=1)
                 z_float, z = self.l1(x_in)
                 features.append(z)
                 features_float.append(z_float)
