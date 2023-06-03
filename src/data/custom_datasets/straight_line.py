@@ -17,6 +17,7 @@ class StraightLine(Dataset):
                  num_images: Optional[int] = 50,
                  num_aug_versions: Optional[int] = 0,
                  num_channels: Literal[1, 3] = 1,
+                 aug_range: Optional[int] = 2,
                  vertical_horizontal_only: Optional[bool] = False,
                  fixed_lines_eval_test: Optional[bool] = False,
                  noise: Optional[float] = 0.,
@@ -48,6 +49,7 @@ class StraightLine(Dataset):
         self.fixed_lines_eval_test = fixed_lines_eval_test
         self.noise = noise
         self.transform = transform
+        self.aug_range = aug_range
 
         if self.transform is None:
             self.transform = T.Compose([
@@ -107,14 +109,13 @@ class StraightLine(Dataset):
         :param coords: The coordinates of the straight line.
         :return: The new coordinates.
         """
-        range_ = 2
         (x1, y1), (x2, y2) = coords
         
-        if range_ > 0:
-            x1 += random.randint(-range_, range_)
-            y1 += random.randint(-range_, range_)
-            x2 += random.randint(-range_, range_)
-            y2 += random.randint(-range_, range_)
+        if self.aug_range > 0:
+            x1 += random.randint(-self.aug_range, self.aug_range)
+            y1 += random.randint(-self.aug_range, self.aug_range)
+            x2 += random.randint(-self.aug_range, self.aug_range)
+            y2 += random.randint(-self.aug_range, self.aug_range)
 
         return (x1, y1), (x2, y2)
 
