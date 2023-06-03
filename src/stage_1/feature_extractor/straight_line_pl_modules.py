@@ -64,7 +64,7 @@ class Conv2dFixedFilters(nn.Module):
                 result.append(self.apply_conv(x[:, idx, ...]))
             return torch.stack(result, dim=1)
         else:
-            return self.apply_conv(x)
+            return self.apply_conv(x).unsqueeze(1)
 
 
 class FixedDogFilter(nn.Module):
@@ -111,7 +111,7 @@ class FixedDogFilter(nn.Module):
                 result.append(self.apply_conv(x[:, idx, ...]))
             return torch.stack(result, dim=1)
         else:
-            return self.apply_conv(x)
+            return self.apply_conv(x).unsqueeze(1)
 
 
 class FixedFilterFeatureExtractor(pl.LightningModule):

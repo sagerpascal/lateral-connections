@@ -364,9 +364,11 @@ class LateralNetwork(pl.LightningModule):
     def get_logs(self) -> Dict[str, float]:
         return self.model.get_logs()
 
-    def plot_model_weights(self):
+    def plot_model_weights(self, show_plot: Optional[bool] = False) -> List[Path]:
         """
         Plot a histogram of the model weights.
+        :param show_plot: Whether to show the plot.
+        :return: List of paths to the plots.
         """
 
         def _hist_plot(ax, weight, title):
@@ -379,32 +381,43 @@ class LateralNetwork(pl.LightningModule):
             ax.set_title(title)
 
         def _plot_weights(ax, weight, title):
-            weight_img_list = [weight[i, j].unsqueeze(0) for i in range(weight.shape[0]) for j in
-                               range(weight.shape[1])]
-            # Order is [(0, 0), (0, 1), ..., (3, 2), (3, 3)]
-            # Each row shows the input weights per output channel
-            grid = utils.make_grid(weight_img_list, nrow=weight.shape[0], normalize=True, scale_each=True)
+            weight_img_list = [weight[i, j].unsqueeze(0) for j in range(weight.shape[1]) for i in
+                               range(weight.shape[0])]
+            # Order is [(0, 0), (1, 0), ..., (3, 0), (0, 1), ..., (3, 7)]
+            # The columns show the output channels, the rows the input channels
+            grid = utils.make_grid(weight_img_list, nrow=weight.shape[0], normalize=True, scale_each=True, pad_value=1)
             ax.imshow(grid.permute(1, 2, 0))
             ax.set_title(title)
 
+        files = []
         for layer, weight in self.model.get_layer_weights().items():
             fig, axs = plt.subplots(1, 2, figsize=(8, 5))
             _hist_plot(axs[0], weight.detach().cpu(), f"Weight distribution ({layer})")
             _plot_weights(axs[1], weight[:20, :20, ...].detach().cpu(), f"Example Weight matrix ({layer})")
             plt.tight_layout()
-            plt.show()
 
             fig_fp = self.conf['run']['plots'].get('store_path', None)
 
             if fig_fp is not None:
-                plt.savefig(Path(fig_fp) / f'weights_{layer}.png')
+                fp = Path(fig_fp) / f'weights_{layer}.png'
+                plt.savefig(fp)
+                files.append(fp)
+
+            if show_plot:
+                plt.show()
+
+            plt.close()
+        return files
 
     def plot_samples(self,
                      img: List[Tensor],
                      features: List[Tensor],
                      input_features: List[Tensor],
                      lateral_features: List[Tensor],
-                     lateral_features_f: List[Tensor]):
+                     lateral_features_f: List[Tensor],
+                     plot_input_features: Optional[bool] = True,
+                     show_plot: Optional[bool] = False,
+                     ) -> List[Path]:
         """
         Plot the features extracted from a single sample.
         :param img: A list of samples, i.e. of batches of the original images (shape is (B, V, C, H, W) where V is
@@ -419,9 +432,12 @@ class LateralNetwork(pl.LightningModule):
         over time (shape is (B, V, T, C, H, W) where V is the number of augmented views, T is the number of
         timesteps, and C is the number of output channels from the lateral layer).
         lateral_features_f: Same as lateral_features but the intermediate float value before binarization.
+        :param plot_input_features: Whether to plot the input features or not.
+        :param show_plot: Whether to show the plot or not.
+        :return: List of paths to the generated plots.
         """
 
-        def _plot_input_features(img, features, input_features, fig_fp: Optional[str] = None):
+        def _plot_input_features(img, features, input_features, fig_fp: Optional[str] = None, show_plot: Optional[bool] = False):
             plt_images, plt_titles = [], []
             for view_idx in range(img.shape[0]):
                 plt_images.append(img[view_idx])
@@ -433,9 +449,9 @@ class LateralNetwork(pl.LightningModule):
                     plt_titles.append(f"Lateral Input V={view_idx} C={feature_idx}")
             plt_images = self._normalize_image_list(plt_images)
             plot_images(images=plt_images, titles=plt_titles, max_cols=2 * features.shape[1] + 1, plot_colorbar=True,
-                        vmin=0, vmax=1, fig_fp=fig_fp)
+                        vmin=0, vmax=1, fig_fp=fig_fp, show_plot=show_plot)
 
-        def _plot_lateral_activation_map(lateral_features, fig_fp: Optional[str] = None):
+        def _plot_lateral_activation_map(lateral_features, fig_fp: Optional[str] = None, show_plot: Optional[bool] = False):
             max_views = 3
             plt_images, plt_titles = [], []
             for view_idx in range(min(max_views, lateral_features.shape[0])):
@@ -446,9 +462,9 @@ class LateralNetwork(pl.LightningModule):
                             f"Lat. L={1 if time_idx == 0 else 2} V={view_idx} T={time_idx} C={feature_idx}")
             plt_images = self._normalize_image_list(plt_images)
             plot_images(images=plt_images, titles=plt_titles, max_cols=lateral_features.shape[2], plot_colorbar=True,
-                        vmin=0, vmax=1, fig_fp=fig_fp)
+                        vmin=0, vmax=1, fig_fp=fig_fp, show_plot=show_plot)
 
-        def _plot_lateral_heat_map(lateral_features_f, fig_fp: Optional[str] = None):
+        def _plot_lateral_heat_map(lateral_features_f, fig_fp: Optional[str] = None, show_plot: Optional[bool] = False):
             max_views = min(3, lateral_features_f.shape[0])
             v_min, v_max = lateral_features_f[:max_views].min(), lateral_features_f[:max_views].max()
             plt_images, plt_titles = [], []
@@ -459,9 +475,9 @@ class LateralNetwork(pl.LightningModule):
                         plt_titles.append(
                             f"L={1 if time_idx == 0 else 2} V={view_idx} T={time_idx} C={feature_idx}")
             plot_images(images=plt_images, titles=plt_titles, max_cols=lateral_features_f.shape[2], plot_colorbar=True,
-                        fig_fp=fig_fp, cmap='hot', interpolation='nearest', vmin=v_min, vmax=v_max)
+                        fig_fp=fig_fp, cmap='hot', interpolation='nearest', vmin=v_min, vmax=v_max, show_plot=show_plot)
 
-        def _plot_lateral_output(img, lateral_features, fig_fp: Optional[str] = None):
+        def _plot_lateral_output(img, lateral_features, fig_fp: Optional[str] = None, show_plot: Optional[bool] = False):
             max_views = 10
             plt_images, plt_titles, plt_masks = [], [], []
             for view_idx in range(min(max_views, lateral_features.shape[0])):
@@ -473,33 +489,48 @@ class LateralNetwork(pl.LightningModule):
                 plt_masks.extend([None, calc_mask])
             plt_images = self._normalize_image_list(plt_images)
             plot_images(images=plt_images, titles=plt_titles, masks=plt_masks, max_cols=2, plot_colorbar=True,
-                        vmin=0, vmax=1, mask_vmin=0, mask_vmax=lateral_features.shape[2] + 1, fig_fp=fig_fp)
+                        vmin=0, vmax=1, mask_vmin=0, mask_vmax=lateral_features.shape[2] + 1, fig_fp=fig_fp,
+                        show_plot=show_plot)
 
         fig_fp = self.conf['run']['plots'].get('store_path', None)
+        files = []
         for i, (img_i, features_i, input_features_i, lateral_features_i, lateral_features_f_i) in enumerate(
                 zip(img, features, input_features, lateral_features, lateral_features_f)):
             for batch_idx in range(img_i.shape[0]):
                 if fig_fp is not None:
                     fig_fp = Path(fig_fp)
-                base_name = f"sample_{i}_batch_idx_{batch_idx}"
-                _plot_input_features(img_i[batch_idx], features_i[batch_idx], input_features_i[batch_idx],
-                                     fig_fp=fig_fp / f'{base_name}_input_features.png')
+                    base_name = f"sample_{i}_batch_idx_{batch_idx}"
+                    if_fp = fig_fp / f'{base_name}_input_features.png'
+                    am_fp = fig_fp / f'{base_name}_lateral_act_maps.png'
+                    hm_fp = fig_fp / f'{base_name}_lateral_heat_maps.png'
+                    lo_fp = fig_fp / f'{base_name}_lateral_output.png'
+                    files.extend([if_fp, am_fp, hm_fp, lo_fp])
+                else:
+                    if_fp, am_fp, hm_fp, lo_fp = None, None, None, None
+                if plot_input_features:
+                    _plot_input_features(img_i[batch_idx], features_i[batch_idx], input_features_i[batch_idx],
+                                         fig_fp=if_fp, show_plot=show_plot)
+                elif if_fp is not None:
+                    files.remove(if_fp)
                 _plot_lateral_activation_map(lateral_features_i[batch_idx],
-                                             fig_fp=fig_fp / f'{base_name}_lateral_act_maps.png')
+                                             fig_fp=am_fp, show_plot=show_plot)
                 _plot_lateral_heat_map(lateral_features_f_i[batch_idx],
-                                       fig_fp=fig_fp / f'{base_name}_lateral_heat_maps.png')
+                                       fig_fp=hm_fp, show_plot=show_plot)
                 _plot_lateral_output(img_i[batch_idx], lateral_features_i[batch_idx],
-                                     fig_fp=fig_fp / f'{base_name}_lateral_output.png')
+                                     fig_fp=lo_fp, show_plot=show_plot)
+
+        return files
 
     def create_activations_video(self,
                                  images: List[Tensor],
                                  features: List[List[Tensor]],
-                                 activations: List[List[List[Tensor]]]):
+                                 activations: List[List[List[Tensor]]]) -> List[str]:
         """
         Create a video of the activations.
         :param images: The original images.
         :param features: The features extracted from the images.
         :param activations: The activations after the lateral connections.
+        :return: A list of paths to the created videos.
         """
         folder = Path("../tmp") / "video_toys"
         if not folder.exists():
@@ -507,6 +538,7 @@ class LateralNetwork(pl.LightningModule):
 
         c = 0
 
+        videos_fp = []
         for img_idx in range(len(images)):
             img = images[img_idx]
             features_img = features[img_idx]
@@ -534,12 +566,15 @@ class LateralNetwork(pl.LightningModule):
                         c += 1
                 fig_fp = self.conf['run']['plots'].get('store_path', None)
                 fig_fp = Path(fig_fp) if fig_fp is not None else folder
-                create_video_from_images_ffmpeg(folder,
-                                                f"{fig_fp / datetime.now().strftime('%Y-%d-%m_%H-%M-%S')}_{img_idx}_"
-                                                f"{batch_idx}.mp4")
+                # video_fp = f"{fig_fp / datetime.now().strftime('%Y-%d-%m_%H-%M-%S')}_{img_idx}_{batch_idx}.mp4"
+                video_fp = f"{fig_fp / 'activations'}_img_{img_idx}_batch_{batch_idx}.mp4"
+                create_video_from_images_ffmpeg(folder, video_fp)
+                videos_fp.append(video_fp)
 
                 for f in folder.glob("*.png"):
                     f.unlink()
+        return videos_fp
+
 
     def configure_model(self) -> nn.Module:
         """

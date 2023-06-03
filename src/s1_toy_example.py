@@ -1,19 +1,18 @@
 import argparse
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import lightning.pytorch as pl
-import numpy as np
 import torch
-import torch.nn.functional as F
+import wandb
 from lightning import Fabric
-from torch import Tensor
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from data import loaders_from_config, plot_images
+from data import loaders_from_config
 from stage_1.feature_extractor.straight_line_pl_modules import FixedFilterFeatureExtractor
 from stage_1.lateral.lateral_connections_toy import LateralNetwork
+from tools import loggers_from_conf
 from tools.store_load_run import load_run, save_run
 from utils import get_config, print_start, print_warn
 
@@ -113,12 +112,14 @@ def configure() -> Dict[str, Optional[Any]]:
     return config
 
 
-def setup_fabric() -> Fabric:
+def setup_fabric(config: Dict[str, Optional[Any]]) -> Fabric:
     """
     Setup the fabric instance.
+    :param config: Configuration dict
     :return: Fabric instance.
     """
-    fabric = Fabric(accelerator="auto", devices=1, loggers=[], callbacks=[])
+    loggers = loggers_from_conf(config)
+    fabric = Fabric(accelerator="auto", devices=1, loggers=loggers, callbacks=[])
     fabric.launch()
     fabric.seed_everything(1)
     return fabric
@@ -150,9 +151,6 @@ def setup_feature_extractor(config: Dict[str, Optional[Any]], fabric: Fabric) ->
     return feature_extractor
 
 
-
-
-
 def single_train_epoch(
         config: Dict[str, Optional[Any]],
         feature_extractor: pl.LightningModule,
@@ -172,13 +170,13 @@ def single_train_epoch(
     for i, batch in tqdm(enumerate(train_loader),
                          total=len(train_loader),
                          colour="GREEN",
-                         desc=f"Train Epoch {epoch + 1}/{config['run']['n_epochs']}"):
-
+                         desc=f"Train Epoch {epoch}/{config['run']['n_epochs']}"):
         with torch.no_grad():
             features = feature_extractor(batch)
         lateral_network(features)
 
     lateral_network.model.set_train(False)
+
 
 def single_eval_epoch(
         config: Dict[str, Optional[Any]],
@@ -200,7 +198,7 @@ def single_eval_epoch(
     for i, batch in tqdm(enumerate(test_loader),
                          total=len(test_loader),
                          colour="GREEN",
-                         desc=f"Testing Epoch {epoch + 1}/{config['run']['n_epochs']}"):
+                         desc=f"Testing Epoch {epoch}/{config['run']['n_epochs']}"):
         with torch.no_grad():
             features = feature_extractor(batch)
             input_features, lateral_features, lateral_features_f = lateral_network(features)
@@ -210,11 +208,31 @@ def single_eval_epoch(
             plt_activations.append(lateral_features)
             plt_activations_f.append(lateral_features_f)
 
-    if config['run']['plots']['enable'] and (not config['run']['plots']['only_last_epoch'] or epoch == config['run']['n_epochs'] - 1):
-        lateral_network.plot_samples(plt_img, plt_features, plt_input_features, plt_activations, plt_activations_f)
-        lateral_network.plot_model_weights()
-        lateral_network.create_activations_video(plt_img, plt_input_features, plt_activations)
+    plot = config['run']['plots']['enable'] and \
+           (not config['run']['plots']['only_last_epoch'] or epoch == config['run']['n_epochs'])
+    wandb_b = config['logging']['wandb']['active']
+    store_plots = config['run']['plots'].get('store_path', False)
 
+    assert not wandb_b or wandb_b and store_plots, "Wandb logging requires storing the plots."
+
+    if plot or wandb_b or store_plots:
+        plots_fp = lateral_network.plot_samples(plt_img,
+                                                plt_features,
+                                                plt_input_features,
+                                                plt_activations,
+                                                plt_activations_f,
+                                                plot_input_features=epoch == 0,
+                                                show_plot=plot)
+        weights_fp = lateral_network.plot_model_weights(show_plot=plot)
+        if epoch == config['run']['n_epochs']:
+            videos_fp = lateral_network.create_activations_video(plt_img, plt_input_features, plt_activations)
+
+        if wandb_b:
+            logs = {str(pfp.name[:-4]): wandb.Image(str(pfp)) for pfp in plots_fp}
+            logs |= {str(wfp.name[:-4]): wandb.Image(str(wfp)) for wfp in weights_fp}
+            if epoch == config['run']['n_epochs']:
+                logs |= {str(vfp.name[:-4]): wandb.Video(str(vfp)) for vfp in videos_fp}
+            wandb.log(logs | {"epoch": epoch}, step=epoch)
 
 
 def train(
@@ -231,9 +249,13 @@ def train(
     :param test_loader: Testing dataloader
     """
     start_epoch = config['run']['current_epoch']
+
+    if config['logging']['wandb']['active'] or config['run']['plots']['enable']:
+        single_eval_epoch(config, feature_extractor, lateral_network, test_loader, 0)
+
     for epoch in range(start_epoch, config['run']['n_epochs']):
-        single_train_epoch(config, feature_extractor, lateral_network, train_loader, epoch)
-        single_eval_epoch(config, feature_extractor, lateral_network, test_loader, epoch)
+        single_train_epoch(config, feature_extractor, lateral_network, train_loader, epoch+1)
+        single_eval_epoch(config, feature_extractor, lateral_network, test_loader, epoch+1)
         lateral_network.on_epoch_end()
         config['run']['current_epoch'] = epoch + 1
 
@@ -255,7 +277,7 @@ def main():
     print_start("Starting python script 's1_toy_example.py'...",
                 title="Training S1: Lateral Connections Toy Example")
     config = configure()
-    fabric = setup_fabric()
+    fabric = setup_fabric(config)
     train_loader, test_loader = setup_dataloader(config, fabric)
     feature_extractor = setup_feature_extractor(config, fabric)
     lateral_network = setup_lateral_network(config, fabric)
@@ -274,7 +296,8 @@ def main():
     train(config, feature_extractor, lateral_network, train_loader, test_loader)
 
     if 'store_state_path' in config['run'] and config['run']['store_state_path'] != 'None':
-        save_run(config, fabric, components={'feature_extractor': feature_extractor, 'lateral_network': lateral_network})
+        save_run(config, fabric,
+                 components={'feature_extractor': feature_extractor, 'lateral_network': lateral_network})
 
 
 if __name__ == '__main__':
