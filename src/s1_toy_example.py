@@ -119,6 +119,7 @@ def setup_fabric(config: Dict[str, Optional[Any]]) -> Fabric:
     :return: Fabric instance.
     """
     loggers = loggers_from_conf(config)
+    #torch.backends.cudnn.deterministic = True
     fabric = Fabric(accelerator="auto", devices=1, loggers=loggers, callbacks=[])
     fabric.launch()
     fabric.seed_everything(1)
@@ -166,7 +167,8 @@ def single_train_epoch(
         :param train_loader: Test set dataloader.
         :param epoch: Current epoch.
         """
-    lateral_network.model.set_train(True)
+    feature_extractor.eval()
+    lateral_network.train()
     for i, batch in tqdm(enumerate(train_loader),
                          total=len(train_loader),
                          colour="GREEN",
@@ -174,8 +176,6 @@ def single_train_epoch(
         with torch.no_grad():
             features = feature_extractor(batch)
         lateral_network(features)
-
-    lateral_network.model.set_train(False)
 
 
 def single_eval_epoch(
@@ -193,7 +193,8 @@ def single_eval_epoch(
     :param test_loader: Test set dataloader.
     :param epoch: Current epoch.
     """
-    lateral_network.model.set_train(False)
+    feature_extractor.eval()
+    lateral_network.eval()
     plt_img, plt_features, plt_input_features, plt_activations, plt_activations_f = [], [], [], [], []
     for i, batch in tqdm(enumerate(test_loader),
                          total=len(test_loader),
@@ -288,7 +289,6 @@ def main():
         lateral_network.load_state_dict(state['lateral_network'])
 
     feature_extractor.eval()  # does not have to be trained
-    lateral_network.train()
     if 'store_path' in config['run']['plots'] and config['run']['plots']['store_path'] != 'None':
         fp = Path(config['run']['plots']['store_path'])
         if not fp.exists():

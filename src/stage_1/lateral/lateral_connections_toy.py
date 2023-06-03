@@ -21,9 +21,184 @@ HEBBIAN_ALGO = Literal['instar', 'oja', 'vanilla']
 W_INIT = Literal['random', 'zeros', 'identity']
 
 
-# TODO: In jedem timestep muss ursprüngliche Features berücksichtigt werden!
-# TODO: änhliche Linien über mehrere Timesteps
-# TODO: In jedem timestep geht die Sparsity herunter bis neues Bild ingelesen wird
+# TODO: According to Christoph: The number of connections is important (not only the connection strength) -> Simple measure: Limit the weight
+# TODO: Limit the weight per kernel
+
+class LateralLayer(nn.Module):
+
+    def __init__(self,
+                 fabric: Fabric,
+                 in_channels: int,
+                 out_channels: int,
+                 locality_size: Optional[int] = 2,
+                 lr: Optional[float] = 0.0005,
+                 hebbian_rule: Optional[HEBBIAN_ALGO] = 'vanilla',
+                 ):
+        """
+        Lateral Layer trained with Hebbian Learning. The input and output of this layer are binary.
+
+        This layer comprises two convolutional operations to implement Hebbian learning: a fixed, binary convolution
+        that rearranges every input patch into a single column vector, followed by a 1 × 1 convolution that contains
+        the actual weights. More precisely, suppose our original convolution has input size h × w × n_i (where h and w
+        are the height and width of the convolutional filter, and n_i is the number of channels in the input), with
+        n_o output channels. Then, we can first pass the input through a fixed convolution of input size h × w × n_i
+        with hwn_i output channels, with a fixed weight vector set to 1 for the weights that links input x, y, i to
+        output xyi (where x, y and i run from 1 to h, w and n_i respectively) and 0 everywhere else. This rearranges
+        (and duplicates) the values of each input patch of the original convolution into single, non-overlapping column
+        vectors. Afterwards we can apply the actual weights of the original convolution with a simple 1 × 1 convolution,
+        which can be performed by a simple tensor product with appropriate broadcasting if necessary.
+
+        This somewhat clunkier method does require two convolutional steps, as well as additional memory usage.
+        However, it also provides finer-grained control.
+
+        Proposed in https://arxiv.org/pdf/2107.01729.pdf
+
+        :param fabric: Fabric instance.
+        :param in_channels: Number of input channels.
+        :param out_channels: Number of output channels.
+        :param locality_size: Size of the locality, i.e. how many neurons are connected to each other. For
+        example, if locality_size = 2, then each neuron is connected to 5 neurons on each side of it.
+        :param lr: Learning rate.
+        :param hebbian_rule: Which Hebbian rule to use.
+        """
+        super().__init__()
+        self.fabric = fabric
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.locality_size = locality_size
+        self.neib_size = 2 * self.locality_size + 1
+        self.kernel_size = (self.neib_size, self.neib_size)
+        self.lr = lr
+        self.hebbian_rule = hebbian_rule
+
+        self.W_rearrange = self._init_rearrange_weights()
+        self.W_lateral = nn.Parameter(self._init_lateral_weights())
+
+    def get_weights(self):
+        weights_rearranged = torch.zeros(((self.out_channels, self.in_channels) + self.kernel_size),
+                                         device=self.fabric.device)
+        for no in range(self.out_channels):
+            for ni in range(self.in_channels):
+                for i in range(self.kernel_size[0]):
+                    for j in range(self.kernel_size[1]):
+                        c = ni * self.kernel_size[0] * self.kernel_size[1] + i * self.kernel_size[1] + j
+                        weights_rearranged[no, ni, i, j] = self.W_lateral[no, c, 0, 0]
+        return weights_rearranged
+
+    def new_sample(self):
+        """
+        To be called when a new sample is fed into the network.
+        """
+        pass
+
+    def update_ts(self, ts):
+        """
+        Set the current timestep (relevant for sparsity rate)
+        :param ts: The current timestep
+        """
+        pass
+
+    def _init_rearrange_weights(self) -> Tensor:
+        """
+        Initialize the transpose weights.
+        :return: Tensor of shape (in_channels * kernel_size[0] * kernel_size[1], in_channels, kernel_size[0],
+        kernel_size[1])
+        """
+        W_r_shape = (self.in_channels * self.kernel_size[0] * self.kernel_size[1], self.in_channels) + self.kernel_size
+        W_rearrange = torch.zeros(W_r_shape, device=self.fabric.device, requires_grad=False)
+
+        for i in range(self.in_channels):
+            for j in range(self.kernel_size[0]):
+                for k in range(self.kernel_size[1]):
+                    ijk = i * self.kernel_size[0] * self.kernel_size[1] + j * self.kernel_size[1] + k
+                    W_rearrange[ijk, i, j, k] = 1
+
+        return W_rearrange
+
+    def rearrange_input(self, x: Tensor) -> Tensor:
+        """
+        Rearrange the input tensor x into a single column vector.
+        If x is of shape (batch_size, in_channels, height, width), then the output is of shape (batch_size,
+        in_channels * kernel_size[0] * kernel_size[1], height, width).
+
+        If the output is of shape (C, 5, 5), then the rearrangement is as follows:
+        # C = 0: all inputs of kernel weight at kernel position (0,0) and input channel 0
+        # C = 1: all inputs of kernel weight at kernel position (0,1) and input channel 0
+        # C = 4: all inputs of kernel weight at kernel position (0,4) and input channel 0
+        # C = 5: all inputs of kernel weight at kernel position (1,0) and input channel 0
+        # C = 24: all inputs of kernel weight at kernel position (4,4) and input channel 0
+        # C = 25: all inputs of kernel weight at kernel position (0,0) and input channel 1
+
+        i.e. x_rearranged[0] is a matrix of size (w,h) containing all inputs that affect the kernel weight at position
+        (0,0) and input channel 0. Thus, it looks like this (where p is a padding value and i_xy is the input value at
+        position (x,y)):
+
+        p, p,        p,        p,        p, ...,        p
+        p, p,        p,        p,        p, ...,        p
+        p, p,     i_00,     i_01,     i_02, ..., i_0(w-2)
+        p, p,     i_10,     i_11,     i_12, ..., i_1(w-2)
+        p, p,     i_20,     i_21,     i_22, ..., i_2(w-2)
+        ...,       ...,      ...,      ..., ...,     ...
+        p, p, i_(h-2)0, i_(h-2)1, i_(h-2)2, ..., i_0(w-2)
+
+        Note: only until h-2/w-2 because top right weight does not see more, i.e. is never convolved to the input at
+        the bottom right.
+        """
+        x_rearranged = F.conv2d(x, self.W_rearrange, padding="same")
+        return x_rearranged
+
+    def _init_lateral_weights(self) -> Tensor:
+        W_lateral = torch.zeros((self.out_channels, self.in_channels * self.kernel_size[0] * self.kernel_size[1], 1, 1),
+                                device=self.fabric.device, requires_grad=False)
+
+        for co in range(self.out_channels):
+            for ci in range(self.in_channels):
+                if ci == co:
+                    cii = ci * self.kernel_size[0] * self.kernel_size[1] + self.locality_size * self.kernel_size[
+                        1] + self.locality_size
+                    W_lateral[co, cii, 0, 0] = 1
+
+        return W_lateral
+
+    def hebbian_update(self, x: Tensor, y: Tensor):
+        """
+        Update the weights according to the Hebbian rule.
+        :param x: Input tensor of shape (batch_size, in_channels * kernel_size[0] * kernel_size[1], height, width).
+        :param y: Output tensor of shape (batch_size, out_channels, height, width).
+        """
+        # assert False, "Not implemented yet"
+        assert torch.all((x == 0.) | (x == 1.)), "x not binary"
+        assert torch.all((y == 0.) | (y == 1.)), "y not binary"
+        x_v = x.permute(0, 2, 3, 1).reshape(-1, 1, x.shape[1])
+        y_v = y.permute(0, 2, 3, 1).reshape(-1, y.shape[1], 1)
+        pos_co_activation = torch.matmul(y_v, x_v)
+        neg_co_activation = torch.matmul(y_v, 1 - x_v) + torch.matmul(1 - y_v, x_v)
+        assert torch.all(pos_co_activation >= 0) and torch.all(pos_co_activation <= 1), "pos_co_activation not in [0,1]"
+        assert torch.all(neg_co_activation >= 0.) and torch.all(
+            neg_co_activation <= 1), "neg_co_activation not in [0,1]"
+        assert not torch.any(
+            (pos_co_activation > 0) * (neg_co_activation > 0)), "pos_co_activation and neg_co_activation overlap"
+
+        if self.hebbian_rule == "vanilla":
+            update = torch.mean((pos_co_activation - neg_co_activation), dim=0)
+            update = (update - update.min()) / (update.max() - update.min() + 1e-10)
+            self.W_lateral.data += self.lr * update.view(self.W_lateral.shape)
+            self.W_lateral.data = self.W_lateral.data / (1e-10 + torch.sqrt(
+                torch.sum(self.W_lateral.data ** 2, dim=[1, 2, 3], keepdim=True)))  # Weight normalization
+        else:
+            raise NotImplementedError(f"Hebbian rule {self.hebbian_rule} not implemented.")
+
+    def forward(self, x: Tensor) -> Tuple[Tensor, Tensor]:
+        with torch.no_grad():
+            x_rearranged = self.rearrange_input(x)
+            assert torch.all((x_rearranged == 0.) | (x_rearranged == 1.)), "x_rearranged not binary"
+            x_lateral = F.conv2d(x_rearranged, self.W_lateral, padding="same")
+            x_lateral_bin = (x_lateral > 0.5).float()
+
+            if self.training:
+                self.hebbian_update(x_rearranged, x_lateral_bin)
+
+            return x_lateral, x_lateral_bin
 
 
 class LateralLayerEfficient(nn.Module):
@@ -83,7 +258,6 @@ class LateralLayerEfficient(nn.Module):
         self.thr_rate = thr_rate
         self.target_rate = self.k / self.out_channels if target_rate is None else target_rate
 
-        self.train_ = True
         self.step = 0
         self.ts = None
         self.prev_activations = {}
@@ -109,7 +283,7 @@ class LateralLayerEfficient(nn.Module):
                 for ic in range(self.in_channels):
                     if oc == ic:
                         self.W[oc, ic, self.locality_size, self.locality_size] = 1
-            self.W.requires_grad=True
+            self.W.requires_grad = True
 
         self.W.data = self.W.data / (1e-10 + torch.sqrt(torch.sum(self.W.data ** 2, dim=[1, 2, 3], keepdim=True)))
         self.b = torch.zeros((1, self.out_channels, 1, 1), requires_grad=False).to(fabric.device)
@@ -137,6 +311,9 @@ class LateralLayerEfficient(nn.Module):
         self.k = k
         self.target_rate = self.k / self.out_channels
         assert False, "Should this be called?"
+
+    def get_weights(self):
+        return self.W
 
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor]:
         self.optimizer.zero_grad()
@@ -188,10 +365,6 @@ class LateralLayerEfficient(nn.Module):
 #
             # realy.data = (realy.data > threshold.view(realy.shape[0], 1, 1, 1)).float()
 
-
-
-
-
         # Then we compute the surrogate output yforgrad, whose gradient computations produce the desired Hebbian output
         # Note: We must not include thresholds here, as this would not produce the expected gradient expressions. The
         # actual values will come from realy, which does include thresholding.
@@ -209,7 +382,7 @@ class LateralLayerEfficient(nn.Module):
         yforgrad.data = realy.data  # We force the value of yforgrad to be the "correct" y
 
         loss = torch.sum(-1 / 2 * yforgrad * yforgrad)
-        if self.train_:
+        if self.training:
             loss.backward()
             if self.step > 100:  # No weight modifications before batch 100 (burn-in) or after learning
                 # epochs (during data accumulation for training / testing)
@@ -252,7 +425,14 @@ class LateralLayerEfficientNetwork1L(nn.Module):
             in_channels += 1
             out_channels += 1
 
-        self.l1 = LateralLayerEfficient(
+        if lm_conf["l1_type"] == "lateral_afficient":
+            l1_t = LateralLayerEfficient
+        elif lm_conf["l1_type"] == "lateral_flex":
+            l1_t = LateralLayer
+        else:
+            assert False, "Unknown lateral layer type"
+
+        self.l1 = l1_t(
             self.fabric,
             in_channels=in_channels,
             out_channels=out_channels,
@@ -263,10 +443,8 @@ class LateralLayerEfficientNetwork1L(nn.Module):
         self.l1.new_sample()
 
     def get_layer_weights(self):
-        return {"L1": self.l1.W}
+        return {"L1": self.l1.get_weights()}
 
-    def set_train(self, train: bool):
-        self.l1.train_ = train
 
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         """
@@ -291,7 +469,8 @@ class LateralLayerEfficientNetwork1L(nn.Module):
             input_features.append(x_view)
 
             if z is None:
-                z = torch.zeros((x_view.shape[0], self.l1.out_channels, x_view.shape[2], x_view.shape[3]), device=x.device)
+                z = torch.zeros((x_view.shape[0], self.l1.out_channels, x_view.shape[2], x_view.shape[3]),
+                                device=x.device)
 
             t = 0
             features, features_float = [], []
@@ -437,7 +616,11 @@ class LateralNetwork(pl.LightningModule):
         :return: List of paths to the generated plots.
         """
 
-        def _plot_input_features(img, features, input_features, fig_fp: Optional[str] = None, show_plot: Optional[bool] = False):
+        def _plot_input_features(img,
+                                 features,
+                                 input_features,
+                                 fig_fp: Optional[str] = None,
+                                 show_plot: Optional[bool] = False):
             plt_images, plt_titles = [], []
             for view_idx in range(img.shape[0]):
                 plt_images.append(img[view_idx])
@@ -451,7 +634,9 @@ class LateralNetwork(pl.LightningModule):
             plot_images(images=plt_images, titles=plt_titles, max_cols=2 * features.shape[1] + 1, plot_colorbar=True,
                         vmin=0, vmax=1, fig_fp=fig_fp, show_plot=show_plot)
 
-        def _plot_lateral_activation_map(lateral_features, fig_fp: Optional[str] = None, show_plot: Optional[bool] = False):
+        def _plot_lateral_activation_map(lateral_features,
+                                         fig_fp: Optional[str] = None,
+                                         show_plot: Optional[bool] = False):
             max_views = 3
             plt_images, plt_titles = [], []
             for view_idx in range(min(max_views, lateral_features.shape[0])):
@@ -477,7 +662,10 @@ class LateralNetwork(pl.LightningModule):
             plot_images(images=plt_images, titles=plt_titles, max_cols=lateral_features_f.shape[2], plot_colorbar=True,
                         fig_fp=fig_fp, cmap='hot', interpolation='nearest', vmin=v_min, vmax=v_max, show_plot=show_plot)
 
-        def _plot_lateral_output(img, lateral_features, fig_fp: Optional[str] = None, show_plot: Optional[bool] = False):
+        def _plot_lateral_output(img,
+                                 lateral_features,
+                                 fig_fp: Optional[str] = None,
+                                 show_plot: Optional[bool] = False):
             max_views = 10
             plt_images, plt_titles, plt_masks = [], [], []
             for view_idx in range(min(max_views, lateral_features.shape[0])):
@@ -574,7 +762,6 @@ class LateralNetwork(pl.LightningModule):
                 for f in folder.glob("*.png"):
                     f.unlink()
         return videos_fp
-
 
     def configure_model(self) -> nn.Module:
         """
