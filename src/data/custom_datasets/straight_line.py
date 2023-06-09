@@ -69,10 +69,11 @@ class StraightLine(Dataset):
         :param idx: Index of the image.
         :return: a Tuple of two Tuples of x,y coordinates.
         """
-        # x1 = random.randint(0, self.img_w)
-        # y1 = random.randint(0, self.img_h)
-        # x2 = random.randint(0, self.img_w)
-        # y2 = random.randint(0, self.img_h)
+        # TODO: Delete this (always the same 2 lines)
+        if idx % 2 == 0:
+            return (2, 15), (30, 15)
+        elif idx % 2 == 1:
+            return (15, 2), (15, 30)
 
         # encourage longer lines
         x1 = random.randint(0, self.img_w // 2)
@@ -141,7 +142,7 @@ class StraightLine(Dataset):
         draw.line(line_coords, fill=(255, 255, 255), width=1)
         return img
 
-    def _create_image(self, line_coords: Optional[Tuple[Tuple[int, int], Tuple[int, int]]]) -> Image:
+    def _create_image(self, idx: int, line_coords: Optional[Tuple[Tuple[int, int], Tuple[int, int]]]) -> Image:
         """
         Creates either a RBG or a grayscale image with a random straight line in withe drawn on it.
         :param line_coords: The coordinates of the line to draw.
@@ -154,9 +155,15 @@ class StraightLine(Dataset):
         else:
             raise ValueError('num_channels must be 1 or 3')
 
-        if self.noise > 0.:
+        if self.noise > 0. or (self.split == 'val' or self.split == 'test') and (idx == 2 or idx == 3):
+            noise = self.noise if self.noise > 0. else 0.005
             img = np.array(img)
-            img = img + np.random.choice(2, img.shape, p=[1 - self.noise, self.noise]) * 255
+            img = img + np.random.choice(2, img.shape, p=[1 - noise, noise]) * 255
+            img = Image.fromarray(img.astype(np.uint8))
+
+        if (self.split == 'val' or self.split == 'test') and (idx == 4 or idx == 5):
+            img = np.array(img)
+            img[(self.img_h-1) // 2, (self.img_w-1) // 2] = 0
             img = Image.fromarray(img.astype(np.uint8))
 
         if self.transform:
@@ -164,7 +171,7 @@ class StraightLine(Dataset):
 
         return img
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int):
         """
         Returns an image with a random straight line drawn on it.
         :param idx: Index of the image to return (has no effect)
@@ -172,9 +179,9 @@ class StraightLine(Dataset):
         """
         line_coords = self._get_random_line_coords(idx)
 
-        images = [self._create_image(line_coords)]
+        images = [self._create_image(idx, line_coords)]
         for i in range(self.num_aug_versions):
-            images.append(self._create_image(self._slightly_change_line_coords(line_coords)))
+            images.append(self._create_image(idx, self._slightly_change_line_coords(line_coords)))
 
         images = torch.stack(images, dim=0) if self.num_aug_versions > 0 else images[0]
         return images
