@@ -58,3 +58,18 @@ Reconstruction of lines
   :width: 800
 
 
+Questions
+---------
+
+- How to measure goodness of activations (i.e. how to define a metric)
+- Timesteps -> not very helpful atm.
+- Different views -> how to implement (i.e. how can we leverage this sequential information)
+
+
+Next Steps
+----------
+
+- Deal with noise -> i.e. try out bigger filters
+- Deal with different types of lines (requires more filters)
+- Define metric(s) to estimate goodness
+- Work on timesteps and changing views
