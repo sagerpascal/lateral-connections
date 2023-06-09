@@ -1,16 +1,14 @@
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
+import lightning.pytorch as pl
 import matplotlib.pyplot as plt
-import torch.nn as nn
+import numpy as np
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from lightning import Fabric
 from torch import Tensor
-import lightning.pytorch as pl
-import numpy as np
-from torch.autograd import Variable
 from torchvision import utils
 
 from data import plot_images
@@ -21,7 +19,8 @@ HEBBIAN_ALGO = Literal['instar', 'oja', 'vanilla']
 W_INIT = Literal['random', 'zeros', 'identity']
 
 
-# TODO: According to Christoph: The number of connections is important (not only the connection strength) -> Simple measure: Limit the weight
+# TODO: According to Christoph: The number of connections is important (not only the connection strength) -> Simple
+#  measure: Limit the weight
 # TODO: Limit the weight per kernel
 
 class LateralLayer(nn.Module):
@@ -73,17 +72,11 @@ class LateralLayer(nn.Module):
 
         self.W_rearrange = self._init_rearrange_weights()
         self.W_lateral = nn.Parameter(self._init_lateral_weights())
+        self.ts = 0
+        self.x_lateral_norm_prev = None
 
     def get_weights(self):
-        weights_rearranged = torch.zeros(((self.out_channels, self.in_channels) + self.kernel_size),
-                                         device=self.fabric.device)
-        for no in range(self.out_channels):
-            for ni in range(self.in_channels):
-                for i in range(self.kernel_size[0]):
-                    for j in range(self.kernel_size[1]):
-                        c = ni * self.kernel_size[0] * self.kernel_size[1] + i * self.kernel_size[1] + j
-                        weights_rearranged[no, ni, i, j] = self.W_lateral[no, c, 0, 0]
-        return weights_rearranged
+        return self.W_lateral.reshape((self.out_channels, self.in_channels) + self.kernel_size)
 
     def new_sample(self):
         """
@@ -96,7 +89,7 @@ class LateralLayer(nn.Module):
         Set the current timestep (relevant for sparsity rate)
         :param ts: The current timestep
         """
-        pass
+        self.ts = ts
 
     def _init_rearrange_weights(self) -> Tensor:
         """
@@ -188,17 +181,63 @@ class LateralLayer(nn.Module):
         else:
             raise NotImplementedError(f"Hebbian rule {self.hebbian_rule} not implemented.")
 
+    def make_gaussian(self, size, fwhm=3, center=None):
+        x = torch.arange(0, size, 1, dtype=torch.float)
+        y = x.unsqueeze(1)
+        if center is None:
+            x0 = y0 = size // 2
+        else:
+            x0 = center[0]
+            y0 = center[1]
+        return torch.exp(-4 * torch.log(torch.Tensor([2])) * ((x - x0) ** 2 + (y - y0) ** 2) / fwhm ** 2)
+
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor]:
         with torch.no_grad():
             x_rearranged = self.rearrange_input(x)
+
+            # TODO: What happens if we set the actual input =0 during training and timestep > 0? -> we could try
+
             assert torch.all((x_rearranged == 0.) | (x_rearranged == 1.)), "x_rearranged not binary"
             x_lateral = F.conv2d(x_rearranged, self.W_lateral, padding="same")
-            x_lateral_bin = (x_lateral > 0.5).float()
 
+            # Normalize by dividing through the max. possible activation (if all weights were 1)
+            x_max_act = F.conv2d(x_rearranged, torch.ones_like(self.W_lateral.data), padding="same")
+            x_max_act[x_max_act > 0] = torch.where(x_max_act[x_max_act > 0] < 7, 7, x_max_act[x_max_act > 0])
+            x_lateral_norm = (x_lateral / (1e-10+x_max_act))
+
+
+            # TODO: Delme
+            # if not hasattr(self, "dist_filter"):
+            #     self.dist_filter = self.makeGaussian(7, 5).to(self.W_lateral.device)
+            # delme_weight = (2 - torch.ones_like(self.W_lateral.data).reshape((self.out_channels, self.in_channels) + self.kernel_size) * self.dist_filter.view((1,1) + self.kernel_size)).reshape(self.W_lateral.shape)
+            #x_lateral_norm = (x_lateral / (1e-10+F.conv2d(x_rearranged, delme_weight, padding="same")))
+            x_lateral_norm = x_lateral_norm / (1e-10 + torch.sum(self.W_lateral.data, dim=(1, 2, 3)).view(1, -1, 1, 1))
+
+            # reduce weight at a certain point if it is too high (does not help a lot...)
+            # x_lateral_norm = torch.where(10 * x_lateral_norm <= 1, 10 * x_lateral_norm, 1 - (x_lateral_norm * 10 - 1))
+
+            x_lateral_norm_s = x_lateral_norm.shape
+            x_lateral_norm /= x_lateral_norm.view(-1, x_lateral_norm_s[2]*x_lateral_norm_s[3]).max(1)[0].view(x_lateral_norm_s[:2]+(1,1))
+
+            # TODO: Test with / without average (two lines below)
+            # TODO: Test with using x_lateral_bin_prev instead of x_lateral_norm_prev
+            if self.ts > 0:
+                x_lateral_norm = (x_lateral_norm + self.ts * self.x_lateral_norm_prev) / (self.ts + 1)
+            self.x_lateral_norm_prev = x_lateral_norm
+
+            # TODO: Over timesteps; increase probability at beginning a little bit and slightly decrease this additional boost over time -> sparsity over time
+            # TODO: In weights of lateral support: Mask out center pixel so that it only depends on the neighborhood
+            #x_lateral_bin = (x_lateral_norm ** 3 >= 0.8).float()
+            x_lateral_bin = torch.bernoulli(torch.clip(x_lateral_norm ** 5, 0, 1))
+
+
+            # TODO:
+            # if self.training and self.ts == 4:
             if self.training:
                 self.hebbian_update(x_rearranged, x_lateral_bin)
 
-            return x_lateral, x_lateral_bin
+            x_lateral /= x_lateral.view(-1, x_lateral_norm_s[2] * x_lateral_norm_s[3]).max(1)[0].view(x_lateral_norm_s[:2] + (1, 1))
+            return torch.cat([x_lateral, x_lateral_norm], dim=1), x_lateral_bin
 
 
 class LateralLayerEfficient(nn.Module):
@@ -319,6 +358,7 @@ class LateralLayerEfficient(nn.Module):
         self.optimizer.zero_grad()
 
         prelimy = F.conv2d(x, self.W, padding="same")
+        prelimy = prelimy * (prelimy > 0.6)
 
         # Then we compute the "real" output (y) of each cell, with winner-take-all competition
         with torch.no_grad():
@@ -342,28 +382,30 @@ class LateralLayerEfficient(nn.Module):
 
             internal_activations = realy.detach()
 
-            # k winner take all
-            smallest_value_per_channel = torch.amin(realy, dim=(2, 3)) + 0.0001
-            tk = torch.topk(realy.data, self.k, dim=1, largest=True)[0]
-            realy.data[realy.data < tk.data[:, -1, :, :][:, None, :, :]] = 0
-            if self.mask_out_bg:
-                realy.data[realy.data <= smallest_value_per_channel.view(
-                    smallest_value_per_channel.shape + (1, 1))] = 0  # mask out background...
+            # # k winner take all
+            # smallest_value_per_channel = torch.amin(realy, dim=(2, 3)) + 0.0001
+            # tk = torch.topk(realy.data, self.k, dim=1, largest=True)[0]
+            # realy.data[realy.data < tk.data[:, -1, :, :][:, None, :, :]] = 0
+            # if self.mask_out_bg:
+            #     realy.data[realy.data <= smallest_value_per_channel.view(
+            #         smallest_value_per_channel.shape + (1, 1))] = 0  # mask out background...
+            #
+            # realy.data = (realy.data > 0.).float()
 
-            realy.data = (realy.data > 0.).float()
+            realy.data = (realy.data > 0.6).float()  # torch.bernoulli(realy.data)
 
             # Adaptive Threshold
             # if self.step <= 100_000:
             #     ratio = max((100_000 - self.step) / 100_000, 0)
             #     realy.data = ((x[:, :x.shape[1] // 2, ...] * ratio + realy.data * (1 - ratio)) > 0.5).float()
-#
-            #     realy.data = (realy.data > 0.).float()
+        #
+        #     realy.data = (realy.data > 0.).float()
 
-            # # binary output
-            # threshold = (torch.sort(realy.view(realy.shape[0], -1), dim=1, descending=True)[0][:,
-            #              int(realy.numel() / realy.shape[0] / realy.shape[1] * 0.2)])
-#
-            # realy.data = (realy.data > threshold.view(realy.shape[0], 1, 1, 1)).float()
+        # # binary output
+        # threshold = (torch.sort(realy.view(realy.shape[0], -1), dim=1, descending=True)[0][:,
+        #              int(realy.numel() / realy.shape[0] / realy.shape[1] * 0.2)])
+        #
+        # realy.data = (realy.data > threshold.view(realy.shape[0], 1, 1, 1)).float()
 
         # Then we compute the surrogate output yforgrad, whose gradient computations produce the desired Hebbian output
         # Note: We must not include thresholds here, as this would not produce the expected gradient expressions. The
@@ -445,7 +487,6 @@ class LateralLayerEfficientNetwork1L(nn.Module):
     def get_layer_weights(self):
         return {"L1": self.l1.get_weights()}
 
-
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         """
         Forward pass over multiple timesteps
@@ -456,7 +497,6 @@ class LateralLayerEfficientNetwork1L(nn.Module):
         """
 
         # TODO: Probabilistic neuron testen, zuerst mit WTA
-        # TODO: Softere Art von WTA - wie kann Symmetrie gebrochen werden?
 
         self.l1.new_sample()
         z = None
@@ -498,13 +538,15 @@ class LateralLayerEfficientNetwork1L(nn.Module):
         """
         stats = {}
         for layer, weight in self.get_layer_weights().items():
+            non_zero_mask = weight != 0
             stats_ = {
                 f"weight_mean_{layer}": torch.mean(weight).item(),
                 f"weight_std_{layer}": torch.std(weight).item(),
+                f"weight_mean_{layer}_(0_ignored)": (torch.sum(weight * non_zero_mask) / torch.sum(non_zero_mask)).item(),
                 f"weight_min_{layer}": torch.min(weight).item(),
                 f"weight_max_{layer}": torch.max(weight).item(),
                 f"weight_above_0.9_{layer}": torch.sum(weight >= 0.9).item() / weight.numel(),
-                f"weight_below_-0.9_{layer}": torch.sum(weight <= -0.9).item() / weight.numel(),
+                f"weight_below_0.1_{layer}": torch.sum(weight <= 0.1).item() / weight.numel(),
             }
             stats = stats | stats_
         return stats
