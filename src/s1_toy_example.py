@@ -222,7 +222,7 @@ def single_eval_epoch(
                                                 plt_input_features,
                                                 plt_activations,
                                                 plt_activations_f,
-                                                plot_input_features=epoch == 0,
+                                                plot_input_features=True, #epoch == 0,
                                                 show_plot=plot)
         weights_fp = lateral_network.plot_model_weights(show_plot=plot)
         if epoch == config['run']['n_epochs']:
@@ -251,8 +251,8 @@ def train(
     """
     start_epoch = config['run']['current_epoch']
 
-    if config['logging']['wandb']['active'] or config['run']['plots']['enable']:
-        single_eval_epoch(config, feature_extractor, lateral_network, test_loader, 0)
+    # if config['logging']['wandb']['active'] or config['run']['plots']['enable']:
+    #     single_eval_epoch(config, feature_extractor, lateral_network, test_loader, 0)
 
     for epoch in range(start_epoch, config['run']['n_epochs']):
         single_train_epoch(config, feature_extractor, lateral_network, train_loader, epoch+1)

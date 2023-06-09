@@ -33,7 +33,7 @@ feature_extractor:
 
 lateral_model:
   channels: 4
-  max_timesteps: 5
+  max_timesteps: 5  # 1 = only one forward pass without recurrent connection
   # l1_type: 'lateral_efficient'
   # l1_params:
   #   locality_size: 2
@@ -50,6 +50,6 @@ lateral_model:
   #   w_init: 'identity'
   l1_type: 'lateral_flex'
   l1_params:
-    locality_size: 2
+    locality_size: 3
     lr: 0.00005
     hebbian_rule: 'vanilla'
