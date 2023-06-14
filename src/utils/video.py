@@ -19,7 +19,7 @@ def create_video_from_images_ffmpeg(
     """
     print_info_data(f"Creating video from images in folder {images}...")
 
-    command = f"ffmpeg -framerate {fps} -pattern_type glob -i '{images}/*.png' -c:v libx264 -pix_fmt yuv420p {video_fp}"
+    command = f"ffmpeg -framerate {fps} -pattern_type glob -i '{images}/*.png' -c:v libx264 -pix_fmt yuv420p {video_fp} -y"
 
     with open(os.devnull, 'wb') as devnull:
         subprocess.check_call([command], shell=True, stdout=devnull, stderr=subprocess.STDOUT)

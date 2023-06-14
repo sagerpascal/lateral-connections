@@ -4,7 +4,7 @@
 Create conda environment
 
 ```bash
-conda create --name lateral-connections python=3.10 pytorch torchvision -c pytorch
+conda create --name lateral-connections python=3.10
 ```
 
 Activate Environment
@@ -16,7 +16,7 @@ conda activate lateral-connections
 Install requirements
 
 ```bash
-pip install torch~=2.0.0 torchvision~=0.15.1
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 pip install -r requirements.txt
 ```
 
@@ -24,7 +24,8 @@ pip install -r requirements.txt
 Create conda environment
 
 ```bash
-conda create --name lateral-connections python=3.10 cupy pkg-config libjpeg-turbo opencv pytorch torchvision cudatoolkit=11.6 numba -c conda-forge -c pytorch                    
+conda create --name lateral-connections python=3.10 cupy pkg-config libjpeg-turbo opencv numba -c conda-forge
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118           
 ```
 
 Activate Environment
