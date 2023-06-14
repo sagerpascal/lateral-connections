@@ -1,16 +1,20 @@
 import argparse
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import lightning.pytorch as pl
 import torch
 import wandb
 from lightning import Fabric
+from torch import Tensor
+from torch.optim import Optimizer
+from torch.optim.lr_scheduler import LRScheduler
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from data import loaders_from_config
 from stage_1.feature_extractor.straight_line_pl_modules import FixedFilterFeatureExtractor
+from stage_1.lateral.l2_rbm import L2RBM
 from stage_1.lateral.lateral_connections_toy import LateralNetwork
 from tools import loggers_from_conf
 from tools.store_load_run import load_run, save_run
@@ -119,7 +123,7 @@ def setup_fabric(config: Dict[str, Optional[Any]]) -> Fabric:
     :return: Fabric instance.
     """
     loggers = loggers_from_conf(config)
-    #torch.backends.cudnn.deterministic = True
+    # torch.backends.cudnn.deterministic = True
     fabric = Fabric(accelerator="auto", devices=1, loggers=loggers, callbacks=[])
     fabric.launch()
     fabric.seed_everything(1)
@@ -152,36 +156,120 @@ def setup_feature_extractor(config: Dict[str, Optional[Any]], fabric: Fabric) ->
     return feature_extractor
 
 
+def cycle(
+        config: Dict[str, Optional[Any]],
+        feature_extractor: pl.LightningModule,
+        lateral_network: LateralNetwork,
+        l2: L2RBM,
+        batch: Tensor,
+        batch_idx: int,
+        store_tensors: Optional[bool] = False,
+        mode: Optional[str] = "train",
+        fabric: Optional[Fabric] = None,
+        l2_opt: Optional[Optimizer] = None,
+):
+    """
+    Perform a single cycle of the model.
+    :param config: Configuration dict
+    :param feature_extractor: The feature extractor model to extract features from a given image.
+    :param lateral_network: The network building sub-networks by using lateral connections
+    :param l2: The L2RBM model
+    :param batch: The images to process.
+    :param batch_idx: The index of the batch.
+    :param store_tensors: Whether to store the tensors and return them.
+    :param mode: The mode of the cycle, either train or eval.
+    :param fabric: The fabric instance.
+    :param l2_opt: The optimizer for the L2-model.
+    :return: The features extracted from the image, the binarized features fed into the network with lateral
+    connections, the features after lateral connections (binary) and the features after lateral connections as float
+    """
+    assert mode in ["train", "eval"], "Mode must be either train or eval"
+    assert mode == "train" and fabric is not None or mode == "eval", "Fabric must be given in train mode"
+    assert mode == "train" and fabric is not None or mode == "eval", "Optimizer must be given in train mode"
+
+    with torch.no_grad():
+        features = feature_extractor(batch)
+
+    lateral_network.new_sample()
+    z = None
+
+    input_features, lateral_features, lateral_features_f, l2_features = [], [], [], []
+    for view_idx in range(features.shape[1]):
+        x_view_features = features[:, view_idx, ...]
+        x_view_features = torch.where(x_view_features > 0., 1., 0.)
+        if store_tensors:
+            input_features.append(x_view_features)
+
+        if z is None:
+            z = torch.zeros((x_view_features.shape[0], lateral_network.model.out_channels, x_view_features.shape[2],
+                             x_view_features.shape[3]), device=batch.device)
+
+        features_lat, features_lat_float, features_l2 = [], [], []
+        for t in range(config["lateral_model"]["max_timesteps"]):
+            lateral_network.model.update_ts(t)
+            x_in = torch.cat([x_view_features, z], dim=1)
+            z_float, z = lateral_network(x_in)
+
+            if mode == "train":
+                l2_opt.zero_grad()
+                z2, z2_gibbs, h, loss = l2.train_step(z, batch, batch_idx)
+                fabric.backward(loss)
+                l2_opt.step()
+            else:
+                z2, z2_gibbs, h, loss = l2.eval_step(z, batch, batch_idx)
+
+            if store_tensors:
+                features_lat.append(z)
+                features_lat_float.append(z_float)
+                features_l2.append(h)
+
+        if store_tensors:
+            lateral_features.append(torch.stack(features_lat, dim=1))
+            lateral_features_f.append(torch.stack(features_lat_float, dim=1))
+            l2_features.append(torch.stack(features_l2, dim=1))
+
+    if store_tensors:
+        return features, torch.stack(input_features, dim=1), torch.stack(lateral_features, dim=1), torch.stack(
+            lateral_features_f, dim=1), torch.stack(l2_features, dim=1)
+
+
 def single_train_epoch(
         config: Dict[str, Optional[Any]],
         feature_extractor: pl.LightningModule,
-        lateral_network: pl.LightningModule,
+        lateral_network: LateralNetwork,
+        l2: L2RBM,
         train_loader: DataLoader,
         epoch: int,
+        fabric: Fabric,
+        l2_opt: Optimizer,
 ):
     """
         Train the model for a single epoch.
         :param config: Configuration dict.
         :param feature_extractor: Feature extractor model.
         :param lateral_network: Laternal network model.
+        :param l2: The L2RBM model
         :param train_loader: Test set dataloader.
         :param epoch: Current epoch.
+        :param fabric: The fabric instance.
+        :param l2_opt: The optimizer for the L2-model.
         """
     feature_extractor.eval()
     lateral_network.train()
+    l2.train()
     for i, batch in tqdm(enumerate(train_loader),
                          total=len(train_loader),
                          colour="GREEN",
                          desc=f"Train Epoch {epoch}/{config['run']['n_epochs']}"):
-        with torch.no_grad():
-            features = feature_extractor(batch)
-        lateral_network(features)
+        cycle(config, feature_extractor, lateral_network, l2, batch, i, store_tensors=False, mode="train",
+              fabric=fabric, l2_opt=l2_opt)
 
 
 def single_eval_epoch(
         config: Dict[str, Optional[Any]],
         feature_extractor: pl.LightningModule,
-        lateral_network: pl.LightningModule,
+        lateral_network: LateralNetwork,
+        l2: L2RBM,
         test_loader: DataLoader,
         epoch: int,
 ):
@@ -190,24 +278,32 @@ def single_eval_epoch(
     :param config: Configuration dict.
     :param feature_extractor: Feature extractor model.
     :param lateral_network: Laternal network model.
+    :param l2: The L2RBM model
     :param test_loader: Test set dataloader.
     :param epoch: Current epoch.
     """
     feature_extractor.eval()
     lateral_network.eval()
-    plt_img, plt_features, plt_input_features, plt_activations, plt_activations_f = [], [], [], [], []
+    l2.eval()
+    plt_img, plt_features, plt_input_features, plt_activations, plt_activations_f, plt_activations_l2 = [], [], [], \
+        [], [], []
     for i, batch in tqdm(enumerate(test_loader),
                          total=len(test_loader),
                          colour="GREEN",
                          desc=f"Testing Epoch {epoch}/{config['run']['n_epochs']}"):
         with torch.no_grad():
-            features = feature_extractor(batch)
-            input_features, lateral_features, lateral_features_f = lateral_network(features)
+            features, input_features, lateral_features, lateral_features_f, l2_features = cycle(config,
+                                                                                                feature_extractor,
+                                                                                                lateral_network, l2,
+                                                                                                batch, i,
+                                                                                                store_tensors=True,
+                                                                                                mode="eval")
             plt_img.append(batch)
             plt_features.append(features)
             plt_input_features.append(input_features)
             plt_activations.append(lateral_features)
             plt_activations_f.append(lateral_features_f)
+            plt_activations_l2.append(l2_features)
 
     plot = config['run']['plots']['enable'] and \
            (not config['run']['plots']['only_last_epoch'] or epoch == config['run']['n_epochs'])
@@ -217,20 +313,22 @@ def single_eval_epoch(
     assert not wandb_b or wandb_b and store_plots, "Wandb logging requires storing the plots."
 
     if plot or wandb_b or store_plots:
-        plots_fp = lateral_network.plot_samples(plt_img,
-                                                plt_features,
-                                                plt_input_features,
-                                                plt_activations,
-                                                plt_activations_f,
-                                                plot_input_features=True, #epoch == 0,
-                                                show_plot=plot)
-        weights_fp = lateral_network.plot_model_weights(show_plot=plot)
+        # plots_fp = lateral_network.plot_samples(plt_img,
+        #                                         plt_features,
+        #                                         plt_input_features,
+        #                                         plt_activations,
+        #                                         plt_activations_f,
+        #                                         plot_input_features=True,  # epoch == 0,
+        #                                         show_plot=plot)
+        # weights_fp = lateral_network.plot_model_weights(show_plot=plot)
+        plots_l2_fp = l2.plot_samples(plt_img, plt_activations_l2, show_plot=plot)
         if epoch == config['run']['n_epochs']:
             videos_fp = lateral_network.create_activations_video(plt_img, plt_input_features, plt_activations)
 
         if wandb_b:
             logs = {str(pfp.name[:-4]): wandb.Image(str(pfp)) for pfp in plots_fp}
             logs |= {str(wfp.name[:-4]): wandb.Image(str(wfp)) for wfp in weights_fp}
+            logs |= {str(wfp.name[:-4]): wandb.Image(str(wfp)) for wfp in plots_l2_fp}
             if epoch == config['run']['n_epochs']:
                 logs |= {str(vfp.name[:-4]): wandb.Video(str(vfp)) for vfp in videos_fp}
             wandb.log(logs | {"epoch": epoch}, step=epoch)
@@ -239,29 +337,42 @@ def single_eval_epoch(
 def train(
         config: Dict[str, Optional[Any]],
         feature_extractor: pl.LightningModule,
-        lateral_network: pl.LightningModule,
+        lateral_network: LateralNetwork,
+        l2: L2RBM,
         train_loader: DataLoader,
-        test_loader: DataLoader):
+        test_loader: DataLoader,
+        fabric: Fabric,
+        l2_opt: Optimizer,
+        l2_sched: Optional[LRScheduler] = None
+):
     """
     Train the model.
     :param config: Configuration dict
     :param feature_extractor: Feature extractor module
+    :param lateral_network: Lateral network module
+    :param l2: L2RBM module
     :param train_loader: Training dataloader
     :param test_loader: Testing dataloader
+    :param fabric: The fabric instance.
+    :param l2_opt: The optimizer for the L2-model.
+    :param l2_sched: The lr scheduler for the L2-model.
     """
     start_epoch = config['run']['current_epoch']
 
     # if config['logging']['wandb']['active'] or config['run']['plots']['enable']:
-    #     single_eval_epoch(config, feature_extractor, lateral_network, test_loader, 0)
+    #     single_eval_epoch(config, feature_extractor, lateral_network, l2, test_loader, 0)
 
     for epoch in range(start_epoch, config['run']['n_epochs']):
-        single_train_epoch(config, feature_extractor, lateral_network, train_loader, epoch+1)
-        single_eval_epoch(config, feature_extractor, lateral_network, test_loader, epoch+1)
+        single_train_epoch(config, feature_extractor, lateral_network, l2, train_loader, epoch + 1, fabric, l2_opt)
+        single_eval_epoch(config, feature_extractor, lateral_network, l2, test_loader, epoch + 1)
         lateral_network.on_epoch_end()
+        l2_logs = l2.on_epoch_end()
+        if l2_sched is not None:
+            l2_sched.step(l2_logs["l2/val/loss"])
         config['run']['current_epoch'] = epoch + 1
 
 
-def setup_lateral_network(config, fabric) -> pl.LightningModule:
+def setup_lateral_network(config, fabric) -> LateralNetwork:
     """
     Setup the model using lateral connections.
     :param config: Configuration dict
@@ -269,6 +380,16 @@ def setup_lateral_network(config, fabric) -> pl.LightningModule:
     :return: Model using lateral connections.
     """
     return fabric.setup(LateralNetwork(config, fabric))
+
+
+def setup_l2(config, fabric) -> L2RBM:
+    """
+    Setup the model L2.
+    :param config: Configuration dict
+    :param fabric: Fabric instance
+    :return: L2 model.
+    """
+    return fabric.setup(L2RBM(config, fabric))
 
 
 def main():
@@ -282,22 +403,28 @@ def main():
     train_loader, test_loader = setup_dataloader(config, fabric)
     feature_extractor = setup_feature_extractor(config, fabric)
     lateral_network = setup_lateral_network(config, fabric)
+    l2 = setup_l2(config, fabric)
+    l2_opt, l2_sched = l2.configure_optimizers()
 
     if 'load_state_path' in config['run'] and config['run']['load_state_path'] != 'None':
         config, state = load_run(config, fabric)
         feature_extractor.load_state_dict(state['feature_extractor'])
         lateral_network.load_state_dict(state['lateral_network'])
+        l2.load_state_dict(state['l2'])
+        l2_opt.load_state_dict(state['l2_opt'])
+        l2_sched.load_state_dict(state['l2_sched'])
 
     feature_extractor.eval()  # does not have to be trained
     if 'store_path' in config['run']['plots'] and config['run']['plots']['store_path'] != 'None':
         fp = Path(config['run']['plots']['store_path'])
         if not fp.exists():
             fp.mkdir(parents=True, exist_ok=True)
-    train(config, feature_extractor, lateral_network, train_loader, test_loader)
+    train(config, feature_extractor, lateral_network, l2, train_loader, test_loader, fabric, l2_opt, l2_sched)
 
     if 'store_state_path' in config['run'] and config['run']['store_state_path'] != 'None':
         save_run(config, fabric,
-                 components={'feature_extractor': feature_extractor, 'lateral_network': lateral_network})
+                 components={'feature_extractor': feature_extractor, 'lateral_network': lateral_network, 'l2': l2,
+                             'l2_opt': l2_opt, 'l2_sched': l2_sched.state_dict()})
 
 
 if __name__ == '__main__':
