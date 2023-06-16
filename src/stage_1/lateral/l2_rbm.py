@@ -183,6 +183,7 @@ class L2RBM(BaseLitModule):
         return img_list
 
     def plot_samples(self, img, activations_l2, show_plot):
+        fig_fps = []
         for img_i, act_i in zip(img, activations_l2):
             for batch_idx in range(img_i.shape[0]):
                 plt_images, plt_titles = [], []
@@ -200,3 +201,5 @@ class L2RBM(BaseLitModule):
                 plt_images = self._normalize_image_list(plt_images)
                 plot_images(images=plt_images, titles=plt_titles, max_cols=act_i.shape[3] + 1, plot_colorbar=True,
                             vmin=0, vmax=1, fig_fp=fig_fp, show_plot=show_plot)
+                fig_fps.append(fig_fp)
+        return fig_fps

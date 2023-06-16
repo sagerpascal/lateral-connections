@@ -241,15 +241,15 @@ class LateralLayer(nn.Module):
                 self.hebbian_update(x_rearranged, x_lateral_bin)
 
             stats = {
-                "avg_support_active": x_lateral[x_lateral_bin > 0].mean().item(),
-                "std_support_active": x_lateral[x_lateral_bin > 0].std().item(),
-                "min_support_active": x_lateral[x_lateral_bin > 0].min().item(),
-                "max_support_active": x_lateral[x_lateral_bin > 0].max().item(),
-                "avg_support_inactive": x_lateral[x_lateral_bin <= 0].mean().item(),
-                "std_support_inactive": x_lateral[x_lateral_bin <= 0].std().item(),
-                "min_support_inactive": x_lateral[x_lateral_bin <= 0].min().item(),
-                "max_support_inactive": x_lateral[x_lateral_bin <= 0].max().item(),
-                "norm_factor": torch.mean(x_lateral / (1e-10 + x_lateral_norm)).item()
+                "l1/avg_support_active": x_lateral[x_lateral_bin > 0].mean().item(),
+                "l1/std_support_active": x_lateral[x_lateral_bin > 0].std().item(),
+                "l1/min_support_active": x_lateral[x_lateral_bin > 0].min().item(),
+                "l1/max_support_active": x_lateral[x_lateral_bin > 0].max().item(),
+                "l1/avg_support_inactive": x_lateral[x_lateral_bin <= 0].mean().item(),
+                "l1/std_support_inactive": x_lateral[x_lateral_bin <= 0].std().item(),
+                "l1/min_support_inactive": x_lateral[x_lateral_bin <= 0].min().item(),
+                "l1/max_support_inactive": x_lateral[x_lateral_bin <= 0].max().item(),
+                "l1/norm_factor": torch.mean(x_lateral / (1e-10 + x_lateral_norm)).item()
             }
 
             x_lateral /= x_lateral.view(-1, x_lateral_norm_s[2] * x_lateral_norm_s[3]).max(1)[0].view(
@@ -845,7 +845,9 @@ class LateralNetwork(pl.LightningModule):
         return LateralLayerEfficientNetwork1L(self.conf, self.fabric)
 
     def on_epoch_end(self):
-        print_logs(self.get_and_reset_logs())
+        logs = self.get_and_reset_logs()
+        self.log_dict(logs)
+        print_logs(logs)
 
     def _normalize_image_list(self, img_list):
         img_list = torch.stack([i.squeeze() for i in img_list])
