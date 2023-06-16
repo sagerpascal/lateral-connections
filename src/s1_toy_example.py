@@ -212,16 +212,16 @@ def cycle(
 
             if mode == "train":
                 l2_opt.zero_grad()
-                z2, z2_gibbs, h, loss = l2.train_step(z, batch, batch_idx)
+                z2, z2_feedback, h, loss = l2.train_step(z, batch, batch_idx)
                 fabric.backward(loss)
                 l2_opt.step()
             else:
-                z2, z2_gibbs, h, loss = l2.eval_step(z, batch, batch_idx)
+                z2, z2_feedback, h, loss = l2.eval_step(z, batch, batch_idx)
 
             if store_tensors:
                 features_lat.append(z)
                 features_lat_float.append(z_float)
-                features_l2.append(h)
+                features_l2.append(torch.cat([z2_feedback, h], dim=1))
 
         if store_tensors:
             lateral_features.append(torch.stack(features_lat, dim=1))
@@ -410,9 +410,9 @@ def main():
         config, state = load_run(config, fabric)
         feature_extractor.load_state_dict(state['feature_extractor'])
         lateral_network.load_state_dict(state['lateral_network'])
-        l2.load_state_dict(state['l2'])
-        l2_opt.load_state_dict(state['l2_opt'])
-        l2_sched.load_state_dict(state['l2_sched'])
+        #l2.load_state_dict(state['l2'])
+        #l2_opt.load_state_dict(state['l2_opt'])
+        #l2_sched.load_state_dict(state['l2_sched'])
 
     feature_extractor.eval()  # does not have to be trained
     if 'store_path' in config['run']['plots'] and config['run']['plots']['store_path'] != 'None':

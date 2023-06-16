@@ -16,7 +16,7 @@ from tools import torch_optim_from_conf
 
 
 class RBM(nn.Module):
-    def __init__(self, n_visible=4 * 32 * 32, n_hidden=16, k=1):
+    def __init__(self, n_visible=4 * 32 * 32, n_hidden=16, k=5):
         """Create a RBM."""
         super(RBM, self).__init__()
         self.v = nn.Parameter(torch.randn(1, n_visible))
@@ -63,10 +63,10 @@ class RBM(nn.Module):
         for _ in range(self.k):
             v_gibb, pv = self.hidden_to_visible(h)
             h, ph = self.visible_to_hidden(v_gibb)
-        return v, v_gibb, torch.cat([h, ph], dim=1)
+        return v, v_gibb, torch.cat([h, ph], dim=1).view(-1, 1, 1, 32).repeat(1, 1, 32, 1)
 
 class RBM2(nn.Module):
-    def __init__(self, n_visible=4 * 32 * 32, n_hidden=1 * 32 * 32, k=1):
+    def __init__(self, n_visible=4 * 32 * 32, n_hidden=1 * 32 * 32, k=5):
         """Create a RBM."""
         super(RBM2, self).__init__()
         self.v = nn.Parameter(torch.randn(1, n_visible))
@@ -105,17 +105,18 @@ class RBM2(nn.Module):
 
     def free_energy_hidden(self, h):
         h_term = torch.matmul(h, self.h.t())
-        w_x_h = F.linear(h, self.W.t(), self.v)
+        w_x_h = F.linear(h, self.W.t(), self.v)  # TODO: Maybe there is no inverse -> 2x W? what happens with functions above that use W.t()?
         v_term = torch.sum(F.softplus(w_x_h), dim=1)
         return torch.mean(-v_term - h_term)
 
     def forward(self, z, prototype):
         z = z.flatten(1)  # Visible Target
         pt = prototype.flatten(1)  # Hidden Target
-        pt2, ppt2 = self.visible_to_hidden(z)  # Visible prediction
-        z2, pz2 = self.hidden_to_visible(pt2) # Hidden prediction
+        for _ in range(self.k):
+            pt2, ppt2 = self.visible_to_hidden(z)  # Visible prediction
+            z, pz = self.hidden_to_visible(pt2)
 
-        return pt, pt2, z, z2, ppt2
+        return pt, pt2, ppt2.reshape(-1, 1, 32, 32)
 
 class L2RBM(BaseLitModule):
     """
@@ -140,11 +141,14 @@ class L2RBM(BaseLitModule):
         return self.model(x, y)
 
     def step(self, x: Tensor, y: Tensor, batch_idx: int, log_prefix: str) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
-        pt, pt2, z, z2, h = self.forward(x, y)
-        loss = self.model.free_energy_hidden(pt) - self.model.free_energy_hidden(pt2)
-        loss += self.model.free_energy_visible(z) - self.model.free_energy_visible(z2)
+        # pt, pt2, h = self.forward(x, y)
+        # loss = self.model.free_energy_hidden(pt) - self.model.free_energy_hidden(pt2)
+        v, v_gibb, h = self.forward(x, y)
+        loss = self.model.free_energy(v) - self.model.free_energy(v_gibb)
+        v = v.reshape(-1, 4, 32, 32)
+        v_gibb = v_gibb.reshape(-1, 4, 32, 32)
         self.log_step(processed_values={"loss": loss}, prefix=log_prefix)
-        return pt, pt2, h, loss
+        return v, v_gibb, h, loss
 
     def train_step(self, x: Tensor, y: Tensor, batch_idx: int) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
         return self.step(x, y, batch_idx, "l2/train")
@@ -157,7 +161,7 @@ class L2RBM(BaseLitModule):
         Configure (create instance) the model.
         :return: A torch model.
         """
-        return RBM2()
+        return RBM()
 
     def configure_optimizers(self) -> Tuple[Optimizer, Optional[LRScheduler]]:
         """
@@ -179,21 +183,20 @@ class L2RBM(BaseLitModule):
         return img_list
 
     def plot_samples(self, img, activations_l2, show_plot):
-        print(len(activations_l2))
-        print(activations_l2[0].shape)
-        plt_images, plt_titles = [], []
         for img_i, act_i in zip(img, activations_l2):
             for batch_idx in range(img_i.shape[0]):
-                for view_idx in range(img_i.shape[1]):
-                    plt_images.append(img_i[batch_idx, view_idx])
-                    plt_titles.append(f"B={batch_idx} V={view_idx}")
-                    plt_images.append(act_i[batch_idx, 0, view_idx].reshape(-1, 32, 32))
-                    # plt_images.append(F.pad(act_i[batch_idx, view_idx], (0, 0, 13, 14), "constant", 0.5))
-                    plt_titles.append(f"B={batch_idx} V={view_idx} L2")
+                plt_images, plt_titles = [], []
+                for view_idx in range(act_i.shape[2]):
+                    plt_images.append(img_i[batch_idx])
+                    plt_titles.append(f"B={batch_idx}")
+                    for feature_idx in range(act_i.shape[3]):
+                        plt_images.append(act_i[batch_idx, :, view_idx, feature_idx])
+                        # plt_images.append(F.pad(act_i[batch_idx, view_idx], (0, 0, 13, 14), "constant", 0.5))
+                        plt_titles.append(f"V={view_idx} F={feature_idx} L2")
 
-        fig_fp = Path(self.conf['run']['plots'].get('store_path', None))
-        if fig_fp is not None:
-            fig_fp = fig_fp / f"l2.png"
-        plt_images = self._normalize_image_list(plt_images)
-        plot_images(images=plt_images, titles=plt_titles, max_cols=2, plot_colorbar=True,
-                    vmin=0, vmax=1, fig_fp=fig_fp, show_plot=show_plot)
+                fig_fp = Path(self.conf['run']['plots'].get('store_path', None))
+                if fig_fp is not None:
+                    fig_fp = fig_fp / f"l2_B={batch_idx}.png"
+                plt_images = self._normalize_image_list(plt_images)
+                plot_images(images=plt_images, titles=plt_titles, max_cols=act_i.shape[3] + 1, plot_colorbar=True,
+                            vmin=0, vmax=1, fig_fp=fig_fp, show_plot=show_plot)
