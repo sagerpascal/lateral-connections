@@ -12,7 +12,7 @@ from torch import Tensor
 from torchvision import utils
 
 from data import plot_images
-from tools import bin2dec
+from tools import AverageMeter, bin2dec
 from utils import create_video_from_images_ffmpeg, print_logs
 
 HEBBIAN_ALGO = Literal['instar', 'oja', 'vanilla']
@@ -191,7 +191,7 @@ class LateralLayer(nn.Module):
             y0 = center[1]
         return torch.exp(-4 * torch.log(torch.Tensor([2])) * ((x - x0) ** 2 + (y - y0) ** 2) / fwhm ** 2)
 
-    def forward(self, x: Tensor) -> Tuple[Tensor, Tensor]:
+    def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Dict[str, float]]:
         with torch.no_grad():
             x_rearranged = self.rearrange_input(x)
 
@@ -203,23 +203,25 @@ class LateralLayer(nn.Module):
             # Normalize by dividing through the max. possible activation (if all weights were 1)
             x_max_act = F.conv2d(x_rearranged, torch.ones_like(self.W_lateral.data), padding="same")
             min_support = self.kernel_size[0]
-            # x_max_act[x_max_act > 0] = torch.where(x_max_act[x_max_act > 0] < min_support, min_support, x_max_act[x_max_act > 0])
+            # x_max_act[x_max_act > 0] = torch.where(x_max_act[x_max_act > 0] < min_support, min_support,
+            # x_max_act[x_max_act > 0])
             x_max_act = torch.where(x_max_act < min_support, min_support, x_max_act)
             x_lateral_norm = x_lateral / x_max_act
-
 
             # TODO: Delme
             # if not hasattr(self, "dist_filter"):
             #     self.dist_filter = self.makeGaussian(7, 5).to(self.W_lateral.device)
-            # delme_weight = (2 - torch.ones_like(self.W_lateral.data).reshape((self.out_channels, self.in_channels) + self.kernel_size) * self.dist_filter.view((1,1) + self.kernel_size)).reshape(self.W_lateral.shape)
-            #x_lateral_norm = (x_lateral / (1e-10+F.conv2d(x_rearranged, delme_weight, padding="same")))
+            # delme_weight = (2 - torch.ones_like(self.W_lateral.data).reshape((self.out_channels, self.in_channels)
+            # + self.kernel_size) * self.dist_filter.view((1,1) + self.kernel_size)).reshape(self.W_lateral.shape)
+            # x_lateral_norm = (x_lateral / (1e-10+F.conv2d(x_rearranged, delme_weight, padding="same")))
             x_lateral_norm = x_lateral_norm / (1e-10 + torch.sum(self.W_lateral.data, dim=(1, 2, 3)).view(1, -1, 1, 1))
 
             # reduce weight at a certain point if it is too high (does not help a lot...)
             # x_lateral_norm = torch.where(10 * x_lateral_norm <= 1, 10 * x_lateral_norm, 1 - (x_lateral_norm * 10 - 1))
 
             x_lateral_norm_s = x_lateral_norm.shape
-            x_lateral_norm /= x_lateral_norm.view(-1, x_lateral_norm_s[2]*x_lateral_norm_s[3]).max(1)[0].view(x_lateral_norm_s[:2]+(1,1))
+            x_lateral_norm /= x_lateral_norm.view(-1, x_lateral_norm_s[2] * x_lateral_norm_s[3]).max(1)[0].view(
+                x_lateral_norm_s[:2] + (1, 1))
 
             # TODO: Test with / without average (two lines below)
             # TODO: Test with using x_lateral_bin_prev instead of x_lateral_norm_prev
@@ -227,19 +229,32 @@ class LateralLayer(nn.Module):
                 x_lateral_norm = (x_lateral_norm + self.ts * self.x_lateral_norm_prev) / (self.ts + 1)
             self.x_lateral_norm_prev = x_lateral_norm
 
-            # TODO: Over timesteps; increase probability at beginning a little bit and slightly decrease this additional boost over time -> sparsity over time
+            # TODO: Over timesteps; increase probability at beginning a little bit and slightly decrease this
+            #  additional boost over time -> sparsity over time
             # TODO: In weights of lateral support: Mask out center pixel so that it only depends on the neighborhood
             x_lateral_bin = (x_lateral_norm ** 3 >= 0.8).float()
-            #x_lateral_bin = torch.bernoulli(torch.clip(x_lateral_norm ** 5, 0, 1))
-
+            # x_lateral_bin = torch.bernoulli(torch.clip(x_lateral_norm ** 5, 0, 1))
 
             # TODO:
             # if self.training and self.ts == 4:
             if self.training:
                 self.hebbian_update(x_rearranged, x_lateral_bin)
 
-            x_lateral /= x_lateral.view(-1, x_lateral_norm_s[2] * x_lateral_norm_s[3]).max(1)[0].view(x_lateral_norm_s[:2] + (1, 1))
-            return torch.cat([x_lateral, x_lateral_norm], dim=1), x_lateral_bin
+            stats = {
+                "avg_support_active": x_lateral[x_lateral_bin > 0].mean().item(),
+                "std_support_active": x_lateral[x_lateral_bin > 0].std().item(),
+                "min_support_active": x_lateral[x_lateral_bin > 0].min().item(),
+                "max_support_active": x_lateral[x_lateral_bin > 0].max().item(),
+                "avg_support_inactive": x_lateral[x_lateral_bin <= 0].mean().item(),
+                "std_support_inactive": x_lateral[x_lateral_bin <= 0].std().item(),
+                "min_support_inactive": x_lateral[x_lateral_bin <= 0].min().item(),
+                "max_support_inactive": x_lateral[x_lateral_bin <= 0].max().item(),
+                "norm_factor": torch.mean(x_lateral / (1e-10 + x_lateral_norm)).item()
+            }
+
+            x_lateral /= x_lateral.view(-1, x_lateral_norm_s[2] * x_lateral_norm_s[3]).max(1)[0].view(
+                x_lateral_norm_s[:2] + (1, 1))
+            return torch.cat([x_lateral, x_lateral_norm], dim=1), x_lateral_bin, stats
 
 
 class LateralLayerEfficient(nn.Module):
@@ -460,6 +475,7 @@ class LateralLayerEfficientNetwork1L(nn.Module):
         super().__init__()
         self.conf = conf
         self.fabric = fabric
+        self.avg_value_meter = {}
 
         lm_conf = self.conf["lateral_model"]
         self.out_channels = self.conf["lateral_model"]["channels"]
@@ -491,7 +507,7 @@ class LateralLayerEfficientNetwork1L(nn.Module):
     def get_layer_weights(self):
         return {"L1": self.l1.get_weights()}
 
-    def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
+    def forward(self, x: Tensor) -> Tuple[Tensor, Tensor]:
         """
         Forward pass over multiple timesteps
         :param x: The input tensor (extracted features of the image)
@@ -500,38 +516,43 @@ class LateralLayerEfficientNetwork1L(nn.Module):
         float)
         """
         # TODO: New
-        return self.l1(x)
-
+        act, act_bin, logs = self.l1(x)
+        for k, v in logs.items():
+            if k not in self.avg_value_meter:
+                self.avg_value_meter[k] = AverageMeter()
+            self.avg_value_meter[k](v, weight=x.shape[0])
+        return act, act_bin
 
         # # TODO: Move this loop into s1_toy_example
         # self.new_sample()
         # z = None
-#
-        # input_features, lateral_features, lateral_features_f = [], [], []
-        # for view_idx in range(x.shape[1]):
-        #     # prepare input view
-        #     x_view = x[:, view_idx, ...]
-        #     x_view = torch.where(x_view > 0., 1., 0.)
-        #     input_features.append(x_view)
-#
-        #     if z is None:
-        #         z = torch.zeros((x_view.shape[0], self.l1.out_channels, x_view.shape[2], x_view.shape[3]),
-        #                         device=x.device)
-#
-        #     t = 0
-        #     features, features_float = [], []
-        #     for t in range(self.conf["lateral_model"]["max_timesteps"]):
-        #         self.l1.update_ts(t)
-        #         x_in = torch.cat([x_view, z], dim=1)
-        #         z_float, z = self.l1(x_in)
-        #         features.append(z)
-        #         features_float.append(z_float)
-#
-        #     lateral_features.append(torch.stack(features, dim=1))
-        #     lateral_features_f.append(torch.stack(features_float, dim=1))
-#
-        # return torch.stack(input_features, dim=1), torch.stack(lateral_features, dim=1), torch.stack(lateral_features_f,
-        #                                                                                             dim=1)
+
+    #
+    # input_features, lateral_features, lateral_features_f = [], [], []
+    # for view_idx in range(x.shape[1]):
+    #     # prepare input view
+    #     x_view = x[:, view_idx, ...]
+    #     x_view = torch.where(x_view > 0., 1., 0.)
+    #     input_features.append(x_view)
+    #
+    #     if z is None:
+    #         z = torch.zeros((x_view.shape[0], self.l1.out_channels, x_view.shape[2], x_view.shape[3]),
+    #                         device=x.device)
+    #
+    #     t = 0
+    #     features, features_float = [], []
+    #     for t in range(self.conf["lateral_model"]["max_timesteps"]):
+    #         self.l1.update_ts(t)
+    #         x_in = torch.cat([x_view, z], dim=1)
+    #         z_float, z = self.l1(x_in)
+    #         features.append(z)
+    #         features_float.append(z_float)
+    #
+    #     lateral_features.append(torch.stack(features, dim=1))
+    #     lateral_features_f.append(torch.stack(features_float, dim=1))
+    #
+    # return torch.stack(input_features, dim=1), torch.stack(lateral_features, dim=1), torch.stack(lateral_features_f,
+    #                                                                                             dim=1)
 
     def get_model_weight_stats(self) -> Dict[str, float]:
         """
@@ -544,7 +565,8 @@ class LateralLayerEfficientNetwork1L(nn.Module):
             stats_ = {
                 f"l1/weight_mean_{layer}": torch.mean(weight).item(),
                 f"l1/weight_std_{layer}": torch.std(weight).item(),
-                f"l1/weight_mean_{layer}_(0_ignored)": (torch.sum(weight * non_zero_mask) / torch.sum(non_zero_mask)).item(),
+                f"l1/weight_mean_{layer}_(0_ignored)": (
+                            torch.sum(weight * non_zero_mask) / torch.sum(non_zero_mask)).item(),
                 f"l1/weight_min_{layer}": torch.min(weight).item(),
                 f"l1/weight_max_{layer}": torch.max(weight).item(),
                 f"l1/weight_above_0.9_{layer}": torch.sum(weight >= 0.9).item() / weight.numel(),
@@ -553,12 +575,18 @@ class LateralLayerEfficientNetwork1L(nn.Module):
             stats = stats | stats_
         return stats
 
-    def get_logs(self) -> Dict[str, float]:
+    def get_and_reset_logs(self) -> Dict[str, float]:
         """
         Get logs for the current epoch.
         :return: Dictionary with logs.
         """
-        return self.get_model_weight_stats()
+        weight_stats = self.get_model_weight_stats()
+        metrics = {}
+        for k, v in self.avg_value_meter.items():
+            metrics[k] = v.mean
+            v.reset()
+
+        return weight_stats | metrics
 
 
 class LateralNetwork(pl.LightningModule):
@@ -586,8 +614,8 @@ class LateralNetwork(pl.LightningModule):
     def update_ts(self, ts):
         self.model.update_ts(ts)
 
-    def get_logs(self) -> Dict[str, float]:
-        return self.model.get_logs()
+    def get_and_reset_logs(self) -> Dict[str, float]:
+        return self.model.get_and_reset_logs()
 
     def plot_model_weights(self, show_plot: Optional[bool] = False) -> List[Path]:
         """
@@ -817,7 +845,7 @@ class LateralNetwork(pl.LightningModule):
         return LateralLayerEfficientNetwork1L(self.conf, self.fabric)
 
     def on_epoch_end(self):
-        print_logs(self.get_logs())
+        print_logs(self.get_and_reset_logs())
 
     def _normalize_image_list(self, img_list):
         img_list = torch.stack([i.squeeze() for i in img_list])
