@@ -1,9 +1,10 @@
-import torch
-from pathlib import Path
 import os
-from typing import Dict, Optional, Union
+from pathlib import Path
+from typing import Any, Dict, Optional, Union
 
-from data import undo_norm_from_conf, plot_images, fig_to_img
+import torch
+
+from data import fig_to_img, plot_images, undo_norm_from_conf
 
 _path_t = Union[str, os.PathLike, Path]
 
@@ -12,7 +13,7 @@ class VisualizeImageCallback:
 
     def __init__(
             self,
-            conf: Dict,
+            conf: Dict[str, Optional[Any]],
             plot: bool = True,
             store_fp: Optional[_path_t] = None,
             return_images: bool = True

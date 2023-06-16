@@ -129,13 +129,14 @@ dmypy.json
 .pyre/
 
 # Project exclude paths
-.checkpoints/
-.data/
 .idea/
-.wandb/
-.plots/
-.tmp/
+/checkpoints/
+/data/
+/wandb/
+/plots/
+/tmp/
 
 # Project specific files
 *.pt
 *.pth
+*.ckpt

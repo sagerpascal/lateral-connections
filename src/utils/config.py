@@ -1,13 +1,14 @@
+import operator
+import os
 from argparse import Namespace
+from functools import reduce
+from pathlib import Path
+from typing import Any, Dict, List, Union
 
 import yaml
 from yaml.loader import SafeLoader
-from pathlib import Path
-from typing import Dict, Any, Union, List
-import os
-from utils.custom_print import print_info_config, print_exception, print_warn
-from functools import reduce
-import operator
+
+from utils.custom_print import print_exception, print_info_config, print_warn
 
 _path_t = Union[str, os.PathLike, Path]
 
@@ -35,8 +36,10 @@ def _add_data_config(config: Dict[str, Any]) -> Dict[str, Any]:
     dataset_augmentation = config["dataset"]["augmentation"]
     data_config = _load_config(DATA_CONFIGS_FP)
     config["dataset"] = config["dataset"] | data_config[dataset_name]
-    config["dataset"]["dir"] = Path(data_config["base_dir"]) / config["dataset"]["dir"]
-    config["dataset"]["beton_dir"] = Path(data_config["base_dir"]) / config["dataset"]["beton_dir"]
+    if "dir" in config["dataset"]:
+        config["dataset"]["dir"] = Path(data_config["base_dir"]) / config["dataset"]["dir"]
+    if "beton_dir" in config["dataset"]:
+        config["dataset"]["beton_dir"] = Path(data_config["base_dir"]) / config["dataset"]["beton_dir"]
 
     if dataset_augmentation is not None and dataset_augmentation != "None":
         config["dataset"]["augmentation"] = data_config[dataset_augmentation]

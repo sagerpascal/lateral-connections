@@ -2,11 +2,11 @@
 ResNet Models with callbacks that are called after each block.
 """
 
+from typing import Any, Callable, Dict, Optional
+
 import torch
-import torchvision
-from typing import Dict, Any, Optional, Callable
 import torch.nn as nn
-from torchvision.models.resnet import ResNet, BasicBlock
+from torchvision.models.resnet import BasicBlock, ResNet
 
 
 class BlockCallbackResNet18(ResNet):
@@ -32,7 +32,6 @@ class BlockCallbackResNet18(ResNet):
         self.conv1 = nn.Conv2d(3, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
         self.maxpool = nn.Identity()
 
-
     def register_after_block_callback(
             self, key: str,
             callback: Callable[[int, torch.Tensor, Optional[torch.Tensor]], None]):
@@ -43,14 +42,12 @@ class BlockCallbackResNet18(ResNet):
         """
         self.after_block_callbacks[key] = callback
 
-
     def unregister_after_block_callback(self, key: str):
         """
         Unregister a callback.
         :param key: Key of the callback to remove.
         """
         self.after_block_callbacks.pop(key)
-
 
     def forward(self, x: torch.Tensor, y: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
@@ -61,7 +58,6 @@ class BlockCallbackResNet18(ResNet):
         """
         return self._forward_impl(x, y)
 
-
     def notify(self, block: int, x: torch.Tensor, y: Optional[torch.Tensor] = None):
         """
         Notify all callbacks that are registered for the given block.
@@ -71,7 +67,6 @@ class BlockCallbackResNet18(ResNet):
         """
         for callback in self.after_block_callbacks.values():
             callback(block, x, y)
-
 
     def _forward_impl(self, x: torch.Tensor, y: Optional[torch.Tensor] = None) -> torch.Tensor:
         """

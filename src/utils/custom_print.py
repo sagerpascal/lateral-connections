@@ -1,6 +1,5 @@
-from typing import Optional, Any
-import pprint
 from pprint import pformat
+from typing import Any, Optional
 
 
 class Color:
@@ -23,12 +22,14 @@ class Symbol:
     EXCEPTION = "🚨"
     START = "💥"
     LOGS = "📊"
+    HIGH_SCORE = "🏆"
+    INFO = "ℹ️"
 
 
 def _print(
         obj: Any,
         symbol: str,
-        color: str,
+        color: Optional[str] = None,
         title: Optional[str] = None,
         symbol_border: bool = False,
         pretty_format: bool = True
@@ -46,6 +47,8 @@ def _print(
         obj = pformat(obj, depth=3)
     if title is not None:
         title = f"{title}\n"
+    if color is None:
+        color = ""
     txt = f"{symbol}\t{color}{Color.BOLD}{title if title is not None else ''}{Color.END}{color}{obj}{Color.END}"
     txt = txt.replace('\n', f'\n{symbol}\t')
     if symbol_border:
@@ -73,6 +76,7 @@ def print_start(obj: Any, title: Optional[str] = None):
     """
     _print(obj, Symbol.START, Color.BLUE, title, symbol_border=True)
 
+
 def print_logs(logs: Any, title: Optional[str] = None):
     """
     Print info text in yellow.
@@ -85,6 +89,7 @@ def print_logs(logs: Any, title: Optional[str] = None):
             v = f"{v:.4f}"
         res += f"\t{k:15s}:\t{v}\n"
     _print(res, Symbol.LOGS, Color.BLUE, title, pretty_format=False)
+
 
 def print_exception(obj: Exception):
     """
@@ -119,4 +124,22 @@ def print_info_config(obj: Any, title: Optional[str] = None):
     :param obj: Text to print.
     :param title: Optional title.
     """
-    _print_info(obj, Symbol.DATA, title)
+    _print_info(obj, Symbol.CONFIG, title)
+
+
+def print_info_best_model(obj: Any, title: Optional[str] = None):
+    """
+    Print info that model achieved new high score in purple.
+    :param obj: Text to print.
+    :param title: Optional title.
+    """
+    _print(obj, Symbol.HIGH_SCORE, color=Color.PURPLE, title=title)
+
+
+def print_info(obj: Any, title: Optional[str] = None):
+    """
+    Print info.
+    :param obj: Text to print.
+    :param title: Optional title.
+    """
+    _print(obj, Symbol.INFO, color=None, title=title)

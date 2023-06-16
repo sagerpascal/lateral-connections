@@ -1,0 +1,64 @@
+dataset:
+  name: mnist
+  augmentation: None
+  loader: torch
+  batch_size: 128
+  num_workers: 0
+
+run:
+  mode: full_image
+  n_epochs: 100
+  current_epoch: 0
+  store_state_path: None  # ../checkpoints/s1/vq_vae_full_image
+  load_state_path: ../checkpoints/s1/vq_vae_full_image/s1_2023-05-04_15-48-50.ckpt
+  visualize_plots: True
+
+optimizers:
+  opt1:
+    type: Adam
+    params:
+      lr: 0.001
+      betas: [ 0.9, 0.999 ]
+      eps: 0.00000001
+      weight_decay: 0
+      amsgrad: False
+    scheduler:
+      type: ReduceLROnPlateau
+      params:
+        mode: min
+        factor: 0.1
+        patience: 5
+        threshold: 0.0001
+        threshold_mode: rel
+        cooldown: 0
+        min_lr: 0.000001
+        eps: 0.00000001
+
+metrics:
+  - mae:
+      type: MeanAbsoluteError
+      meter: avg
+  - mape:
+      type: MeanAbsolutePercentageError
+      meter: avg
+  - mse:
+      type: MeanSquaredError
+      meter: avg
+
+logging:
+  wandb:
+    active: False,
+    save_dir: "../wandb"
+    project: "s1_feature_extractor"
+    log_model: True
+    group: "full_image"
+    job_type: "train"
+  console:
+    active: True
+
+model:
+  type: "SmallVQVAE"
+  params:
+    num_hiddens: 16
+    num_embeddings: 4
+    embedding_dim: 16

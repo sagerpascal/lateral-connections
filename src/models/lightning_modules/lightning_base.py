@@ -1,9 +1,11 @@
+from typing import Any, Dict, List, Optional, Tuple
+
 import lightning.pytorch as pl
-from typing import Optional, Dict, Any, List
 import torch
-import tools
 import wandb
 from lightning.fabric import Fabric
+
+import tools
 
 
 class BaseLitModule(pl.LightningModule):
@@ -29,37 +31,47 @@ class BaseLitModule(pl.LightningModule):
         if logging_prefixes is None:
             logging_prefixes = ["train", "val"]
         self.logging_prefixes = logging_prefixes
-        self.metrics, self.loss_meters = self.configure_meters()
+        self.metrics, self.avg_meters = self.configure_meters()
         if conf['logging'].get('wandb', {}).get('active', False):
             self.configure_wandb_metrics()
         self.current_epoch_ = 0
 
-    def log_step(self, loss: torch.Tensor, y_hat: torch.Tensor, y: torch.Tensor, prefix: str = ""):
+    def log_step(self,
+                 processed_values: Optional[Dict[str, torch.Tensor]] = None,
+                 metric_pairs: Optional[List[Tuple[torch.Tensor, torch.Tensor]]] = None,
+                 prefix: Optional[str] = "",
+                 ):
         """
-        Log the loss and the metrics.
-        :param loss: Loss of the step.
-        :param y_hat: Predictions of the model.
-        :param y: Targets.
-        :param prefix: Prefix for the logging.
+        Log the values and the metrics.
+        :param processed_values: Values that are already processed and can be logged directly with an average value
+        meter. Must be dictionaries with "meter_key" and "value".
+        :param metric_pairs: Pairs of values that are fed into a metric meter. Must be tuples of (v1, v2), typically,
+        v1 is a prediction and v2 is a target.
+        :param prefix: Optional prefix for the logging.
         """
-        for m_name, metric in self.loss_meters.items():
-            if m_name.startswith(prefix):
-                metric(loss)
-        for m_name, metric in self.metrics.items():
-            if m_name.startswith(prefix):
-                metric(y_hat, y)
+        if processed_values is not None:
+            for k, v in processed_values.items():
+                meter_name = f"{prefix}/{k}" if prefix != "" else f"{k}"
+                if meter_name not in self.avg_meters:
+                    self.avg_meters[meter_name] = tools.AverageMeter()
+                self.avg_meters[meter_name](v)
+
+        if metric_pairs is not None:
+            for v1, v2 in metric_pairs:
+                for m_name, metric in self.metrics.items():
+                    if m_name.startswith(prefix) or (prefix == "" and not "/" in m_name):
+                        metric(v1, v2)
 
     def configure_meters(self) -> (Dict[str, tools.AverageMeter], Dict[str, tools.AverageMetricWrapper]):
         """
         Configure (create instances) the metrics.
         :return: Dictionary of metric meters and dictionary of loss meters.
         """
-        metrics = {}
+        metrics, avg_meters = {}, {}
         for prefix in self.logging_prefixes:
             metrics.update({f"{prefix}/{k}": v for k, v in tools.metrics_from_conf(self.conf, self.fabric).items()})
-        loss_meters = {f"{prefix}/loss": tools.AverageMeter() for prefix in self.logging_prefixes}
 
-        return metrics, loss_meters
+        return metrics, avg_meters
 
     def configure_wandb_metrics(self):
         """
@@ -67,25 +79,35 @@ class BaseLitModule(pl.LightningModule):
         """
         for prefix in self.logging_prefixes:
             wandb.define_metric(f'{prefix}/loss', summary='min')
-            for m_name, in self.metrics.keys():
+            for m_name in self.metrics.keys():
                 wandb.define_metric(f'{prefix}/{m_name}', summary='max')
 
-    def log_(self):
+    def log_(self) -> Dict[str, float]:
         """
         Log the metrics.
+        :return: Dictionary of logs.
         """
         logs = {'epoch': self.current_epoch_}
-        for prefix in self.logging_prefixes:
-            logs[f"{prefix}/loss"] = self.loss_meters[f"{prefix}/loss"].mean
-            self.loss_meters[f"{prefix}/loss"].reset()
+        for m_name, m in self.avg_meters.items():
+            val = m.mean
+            if isinstance(val, torch.Tensor):
+                val = val.item()
+            logs[m_name] = val
+            m.reset()
         for m_name, m in self.metrics.items():
-            logs[m_name] = m.mean
+            val = m.mean
+            if isinstance(val, torch.Tensor):
+                val = val.item()
+            logs[m_name] = val
             m.reset()
         self.log_dict(logs)
+        return logs
 
-    def on_epoch_end(self):
+    def on_epoch_end(self) -> Dict[str, float]:
         """
         Callback at the end of an epoch (log data).
+        :return: Dictionary of logs.
         """
-        self.log_()
+        logs = self.log_()
         self.current_epoch_ += 1
+        return logs

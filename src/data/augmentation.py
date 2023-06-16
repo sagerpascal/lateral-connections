@@ -1,8 +1,8 @@
-from typing import Dict
+from typing import Any, Dict, List
+
+import torch.nn as nn
 from torchvision import transforms
 from torchvision.transforms import RandomApply
-import torch.nn as nn
-from typing import List, Any
 
 
 def get_image_augmentation(config: Dict) -> List[Any]:
