@@ -313,15 +313,15 @@ def single_eval_epoch(
     assert not wandb_b or wandb_b and store_plots, "Wandb logging requires storing the plots."
 
     if plot or wandb_b or store_plots:
-        # plots_fp = lateral_network.plot_samples(plt_img,
-        #                                         plt_features,
-        #                                         plt_input_features,
-        #                                         plt_activations,
-        #                                         plt_activations_f,
-        #                                         plot_input_features=True,  # epoch == 0,
-        #                                         show_plot=plot)
-        # weights_fp = lateral_network.plot_model_weights(show_plot=plot)
-        plots_l2_fp = l2.plot_samples(plt_img, plt_activations_l2, show_plot=plot)
+        #plots_fp = lateral_network.plot_samples(plt_img,
+        #                                        plt_features,
+        #                                        plt_input_features,
+        #                                        plt_activations,
+        #                                        plt_activations_f,
+        #                                        plot_input_features=True,  # epoch == 0,
+        #                                        show_plot=plot)
+        #weights_fp = lateral_network.plot_model_weights(show_plot=plot)
+        #plots_l2_fp = l2.plot_samples(plt_img, plt_activations_l2, show_plot=plot)
         if epoch == config['run']['n_epochs']:
             videos_fp = lateral_network.create_activations_video(plt_img, plt_input_features, plt_activations)
 
@@ -359,8 +359,9 @@ def train(
     """
     start_epoch = config['run']['current_epoch']
 
-    # if config['logging']['wandb']['active'] or config['run']['plots']['enable']:
-    #     single_eval_epoch(config, feature_extractor, lateral_network, l2, test_loader, 0)
+    if config['logging']['wandb']['active'] or config['run']['plots']['enable']:
+        single_eval_epoch(config, feature_extractor, lateral_network, l2, test_loader, 0)
+        lateral_network.on_epoch_end()  # print logs
 
     for epoch in range(start_epoch, config['run']['n_epochs']):
         single_train_epoch(config, feature_extractor, lateral_network, l2, train_loader, epoch + 1, fabric, l2_opt)

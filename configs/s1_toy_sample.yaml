@@ -80,5 +80,5 @@ lateral_model:
   l1_type: 'lateral_flex'
   l1_params:
     locality_size: 3
-    lr: 0.00005
+    lr: 0.0005
     hebbian_rule: 'vanilla'
