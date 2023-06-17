@@ -19,6 +19,9 @@ After L2 is well organized and its feedback is helpful for L1, the feedback loop
 Results
 -------
 
+Noise
+~~~~~
+
 Noisy image without L2 Feedback (does not become better over time)
 
 .. image:: /_static/results/230617/no_l2.png
@@ -29,3 +32,19 @@ Noisy image with L2 Feedback (becomes better over time)
 
 .. image:: /_static/results/230617/with_l2.png
   :width: 800
+
+Discontinuous Line
+~~~~~~~~~~~~~~~~~~
+
+Discontinuous line without L2 Feedback
+
+.. image:: /_static/results/230617/ohne_L2_unterbrochen.png
+  :width: 800
+
+
+Discontinuous line with L2 Feedback
+
+.. image:: /_static/results/230617/mit_L2_unterbrochen.png
+  :width: 800
+
+
