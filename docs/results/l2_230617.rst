@@ -1,0 +1,31 @@
+Feedback L2 Layer
+=================
+
+L2 thus to model :math:`P(h|x)` and :math:`P(x|h)`, whereby :math:`h` is of limited size.
+By minimizing the free energy function, L2 decides by itself which representation should be stored.
+However, since the capacity is quite limited, L2 can only store a rather small set of representations.
+When observing cell activity :math:`x` in L1, :math:`P(h|x)` defines the probability for the cell activity in L2. Since we sample :math:`h_{out} ~ \text{Bernoulli}(P(h | x) )`, :math:`h_{out}` becomes binary, whereby cells with a low probability tend to be turned off, while cells with a high probability tend to fire.
+This can be interpreted as filter against noise and slight deformations: A cell activity :math:`x` is mapped to the closest known configuration of :math:`h`.
+To provide feedback to L2, :math:`P(x|h)` is calculated in a similar fashion. Thus, L2 can be interpreted as a type of probabilistic associative memory, providing feedback to L1 based on its current cell state.
+
+
+One problem is that at the beginning of training, L1 and L2 are rather unstructured and their cell activation may change rather strongly.
+For example, the feedback from L2 evolves from initial noise and is, therefore, not only useless for L1 but harmful as it can provide wrong feedback and steer learning process of L1 towards a wrong direction (i.e. L1 learns to build noise instead of proper subnetworks).
+Therefore, the feedback of L2 to L1 is turned off during the first training epochs.
+This allows L1 to learn subnetworks and to forward its activation to L2. L2, on the other hand, organizes its internal structure which takes a few epochs.
+After L2 is well organized and its feedback is helpful for L1, the feedback loop is activated.
+
+
+Results
+-------
+
+Noisy image without L2 Feedback (does not become better over time)
+
+.. image:: /_static/results/230617/no_l2.png
+  :width: 800
+
+
+Noisy image with L2 Feedback (becomes better over time)
+
+.. image:: /_static/results/230617/with_l2.png
+  :width: 800

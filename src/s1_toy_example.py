@@ -163,6 +163,7 @@ def cycle(
         l2: L2RBM,
         batch: Tensor,
         batch_idx: int,
+        epoch: int,
         store_tensors: Optional[bool] = False,
         mode: Optional[str] = "train",
         fabric: Optional[Fabric] = None,
@@ -176,6 +177,7 @@ def cycle(
     :param l2: The L2RBM model
     :param batch: The images to process.
     :param batch_idx: The index of the batch.
+    :param epoch: Current epoch
     :param store_tensors: Whether to store the tensors and return them.
     :param mode: The mode of the cycle, either train or eval.
     :param fabric: The fabric instance.
@@ -217,6 +219,9 @@ def cycle(
                 l2_opt.step()
             else:
                 z2, z2_feedback, h, loss = l2.eval_step(z, batch, batch_idx)
+
+            if epoch > 10:
+                z = z2_feedback
 
             if store_tensors:
                 features_lat.append(z)
@@ -261,7 +266,7 @@ def single_train_epoch(
                          total=len(train_loader),
                          colour="GREEN",
                          desc=f"Train Epoch {epoch}/{config['run']['n_epochs']}"):
-        cycle(config, feature_extractor, lateral_network, l2, batch, i, store_tensors=False, mode="train",
+        cycle(config, feature_extractor, lateral_network, l2, batch, i, epoch=epoch, store_tensors=False, mode="train",
               fabric=fabric, l2_opt=l2_opt)
 
 
@@ -295,7 +300,7 @@ def single_eval_epoch(
             features, input_features, lateral_features, lateral_features_f, l2_features = cycle(config,
                                                                                                 feature_extractor,
                                                                                                 lateral_network, l2,
-                                                                                                batch, i,
+                                                                                                batch, i, epoch=epoch,
                                                                                                 store_tensors=True,
                                                                                                 mode="eval")
             plt_img.append(batch)
@@ -313,15 +318,15 @@ def single_eval_epoch(
     assert not wandb_b or wandb_b and store_plots, "Wandb logging requires storing the plots."
 
     if plot or wandb_b or store_plots:
-        #plots_fp = lateral_network.plot_samples(plt_img,
-        #                                        plt_features,
-        #                                        plt_input_features,
-        #                                        plt_activations,
-        #                                        plt_activations_f,
-        #                                        plot_input_features=True,  # epoch == 0,
-        #                                        show_plot=plot)
-        #weights_fp = lateral_network.plot_model_weights(show_plot=plot)
-        #plots_l2_fp = l2.plot_samples(plt_img, plt_activations_l2, show_plot=plot)
+        plots_fp = lateral_network.plot_samples(plt_img,
+                                                plt_features,
+                                                plt_input_features,
+                                                plt_activations,
+                                                plt_activations_f,
+                                                plot_input_features=True,  # epoch == 0,
+                                                show_plot=plot)
+        weights_fp = lateral_network.plot_model_weights(show_plot=plot)
+        plots_l2_fp = l2.plot_samples(plt_img, plt_activations_l2, show_plot=plot)
         if epoch == config['run']['n_epochs']:
             videos_fp = lateral_network.create_activations_video(plt_img, plt_input_features, plt_activations)
 
@@ -331,7 +336,7 @@ def single_eval_epoch(
             logs |= {str(wfp.name[:-4]): wandb.Image(str(wfp)) for wfp in plots_l2_fp}
             if epoch == config['run']['n_epochs']:
                 logs |= {str(vfp.name[:-4]): wandb.Video(str(vfp)) for vfp in videos_fp}
-            wandb.log(logs | {"epoch": epoch}, step=epoch)
+            wandb.log(logs | {"epoch": epoch, "trainer/global_step": epoch})
 
 
 def train(
