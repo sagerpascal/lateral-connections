@@ -1,5 +1,5 @@
 import random
-from typing import Callable, Literal, Optional, Tuple
+from typing import Callable, List, Literal, Optional, Tuple
 
 import numpy as np
 import torch
@@ -21,6 +21,7 @@ class StraightLine(Dataset):
                  vertical_horizontal_only: Optional[bool] = False,
                  fixed_lines_eval_test: Optional[bool] = False,
                  noise: Optional[float] = 0.,
+                 aug_strategy: Optional[str] = 'random',
                  transform: Optional[Callable] = None):
         """
         Dataset that generates images with a straight line.
@@ -32,6 +33,7 @@ class StraightLine(Dataset):
         :param vertical_horizontal_only: Whether to only generate vertical and horizontal lines.
         :param fixed_lines_eval_test: Whether to use fixed lines for the evaluation and test sets.
         :param noise: The amount of noise to add to the image (i.e. probability to set some pixels to 1).
+        :param aug_strategy: The strategy to use for creating different image views. Can be 'random' or 'trajectory'.
         :param transform: Optional transform to be applied on a sample.
         """
         super().__init__()
@@ -48,8 +50,10 @@ class StraightLine(Dataset):
         self.vertical_horizontal_only = vertical_horizontal_only
         self.fixed_lines_eval_test = fixed_lines_eval_test
         self.noise = noise
+        self.aug_strategy = aug_strategy
         self.transform = transform
         self.aug_range = aug_range
+        self.n_black_pixels = 5
 
         if self.transform is None:
             self.transform = T.Compose([
@@ -103,15 +107,15 @@ class StraightLine(Dataset):
 
         return (x1, y1), (x2, y2)
 
-    def _slightly_change_line_coords(self, coords: Tuple[Tuple[int, int], Tuple[int, int]]
-                                     ) -> Tuple[Tuple[int, int], Tuple[int, int]]:
+    def _slightly_change_line_coords_random(self, coords: Tuple[Tuple[int, int], Tuple[int, int]]
+                                            ) -> Tuple[Tuple[int, int], Tuple[int, int]]:
         """
         Slightly changes the coordinates of a straight line.
         :param coords: The coordinates of the straight line.
         :return: The new coordinates.
         """
         (x1, y1), (x2, y2) = coords
-        
+
         if self.aug_range > 0:
             x1 += random.randint(-self.aug_range, self.aug_range)
             y1 += random.randint(-self.aug_range, self.aug_range)
@@ -119,6 +123,38 @@ class StraightLine(Dataset):
             y2 += random.randint(-self.aug_range, self.aug_range)
 
         return (x1, y1), (x2, y2)
+
+    def _change_line_coords_trajectory(self, coords: Tuple[Tuple[int, int], Tuple[int, int]], num_trajectory: int,
+                                       ) -> List[Tuple[Tuple[int, int], Tuple[int, int]]]:
+        """
+        Smoothly move the line from a starting point to a new point.
+        :param coords: The coordinates of the initial straight line.
+        :return: The new coordinates.
+        """
+        (x1, y1), (x2, y2) = coords
+        x1_target = x1 + random.randint(-self.aug_range, self.aug_range)
+        y1_target = y1 + random.randint(-self.aug_range, self.aug_range)
+        x2_target = x2 + random.randint(-self.aug_range, self.aug_range)
+        y2_target = y2 + random.randint(-self.aug_range, self.aug_range)
+
+        coords_list = []
+        for start, end in [(x1, x1_target), (y1, y1_target), (x2, x2_target), (y2, y2_target)]:
+            step_size = abs(end - start) / num_trajectory
+            trajectories = []
+            point = start
+            for i in range(num_trajectory):
+                if start < end:
+                    point += step_size
+                else:
+                    point -= step_size
+                trajectories.append(int(round(point, 0)))
+            coords_list.append(trajectories)
+
+        result = []
+        for j in range(num_trajectory):
+            result.append(((coords_list[0][j], coords_list[1][j]), (coords_list[2][j], coords_list[3][j])))
+
+        return result
 
     def _create_l_image(self, line_coords: Optional[Tuple[Tuple[int, int], Tuple[int, int]]]) -> Image:
         """
@@ -155,15 +191,24 @@ class StraightLine(Dataset):
         else:
             raise ValueError('num_channels must be 1 or 3')
 
+        # add a black pixel in the middle (discontinous line)
+        if (self.split == 'val' or self.split == 'test') and (idx == 4 or idx == 5):
+            img = np.array(img)
+            line_center = (line_coords[0][0] + line_coords[1][0]) // 2, (line_coords[0][1] + line_coords[1][1]) // 2
+            all_line_coords = np.argwhere(img > 128)
+            center_point_idx = np.sum(np.abs(all_line_coords - np.array([line_center[1], line_center[0]]).reshape(1,2).repeat(all_line_coords.shape[0], axis=0)), axis=1).argmin()
+            n_black = min(self.n_black_pixels, all_line_coords.shape[0] - 2)
+            lower_idx = center_point_idx - n_black // 2
+            upper_idx = center_point_idx + (n_black - (center_point_idx - lower_idx))
+            idxs = np.array([list(all_line_coords[i]) for i in range(lower_idx, upper_idx)])
+            img[idxs[:, 0], idxs[:, 1]] = 0
+            img = Image.fromarray(img.astype(np.uint8))
+
+        # add noise
         if self.noise > 0. or (self.split == 'val' or self.split == 'test') and (idx == 2 or idx == 3):
             noise = self.noise if self.noise > 0. else 0.005
             img = np.array(img)
             img = img + np.random.choice(2, img.shape, p=[1 - noise, noise]) * 255
-            img = Image.fromarray(img.astype(np.uint8))
-
-        if (self.split == 'val' or self.split == 'test') and (idx == 4 or idx == 5):
-            img = np.array(img)
-            img[(self.img_h-1) // 2, (self.img_w-1) // 2] = 0
             img = Image.fromarray(img.astype(np.uint8))
 
         if self.transform:
@@ -179,9 +224,18 @@ class StraightLine(Dataset):
         """
         line_coords = self._get_random_line_coords(idx)
 
+        if self.aug_strategy == 'random':
+            aug_line_coords = [self._slightly_change_line_coords_random(line_coords) for _ in range(self.num_aug_versions)]
+
+        elif self.aug_strategy == 'trajectory':
+            aug_line_coords = self._change_line_coords_trajectory(line_coords, self.num_aug_versions)
+
+        else:
+            raise ValueError('aug_strategy must be "random" or "trajectory"')
+
         images = [self._create_image(idx, line_coords)]
-        for i in range(self.num_aug_versions):
-            images.append(self._create_image(idx, self._slightly_change_line_coords(line_coords)))
+        for aug_coords in aug_line_coords:
+            images.append(self._create_image(idx, aug_coords))
 
         images = torch.stack(images, dim=0) if self.num_aug_versions > 0 else images[0]
         return images
@@ -199,14 +253,15 @@ def _plot_some_samples():
     ])
 
     dataset = StraightLine(split="test", img_h=32, img_w=32, num_images=10, num_aug_versions=9, num_channels=1,
-                           transform=transform, vertical_horizontal_only=True, fixed_lines_eval_test=True, noise=0.005)
+                           transform=transform, vertical_horizontal_only=True, fixed_lines_eval_test=True, noise=0.005,
+                           aug_strategy='trajectory', aug_range=15)
 
     fig, axs = plt.subplots(10, 10, figsize=(10, 10))
     for i in range(10):
         img = dataset[i]
         for idx in range(img.shape[0]):
             j = i * 10 + idx
-            axs[j // 10, j % 10].imshow(img[idx].squeeze(), vmin=0, vmax=1, cmap='gray')
+            axs[j // 10, j % 10].imshow(img[idx].squeeze(), vmin=0, vmax=1, cmap='gray', interpolation='none')
             axs[j // 10, j % 10].axis('off')
     plt.tight_layout()
     plt.show()
