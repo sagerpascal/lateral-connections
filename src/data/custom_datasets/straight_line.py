@@ -53,7 +53,7 @@ class StraightLine(Dataset):
         self.aug_strategy = aug_strategy
         self.transform = transform
         self.aug_range = aug_range
-        self.n_black_pixels = 5
+        self.n_black_pixels = 1
 
         if self.transform is None:
             self.transform = T.Compose([
@@ -238,7 +238,7 @@ class StraightLine(Dataset):
             aug_strategy: Optional[str] = None,
             line_coords: Optional[Tuple[Tuple[int, int], Tuple[int, int]]] = None,
             noise: Optional[float] = None,
-            n_black_pixels: Optional[int] = None
+            n_black_pixels: Optional[int] = 0
     ):
         """
         Returns an image with a random straight line drawn on it.

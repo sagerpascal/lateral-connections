@@ -243,12 +243,12 @@ class LateralLayer(nn.Module):
             stats = {
                 "l1/avg_support_active": x_lateral[x_lateral_bin > 0].mean().item(),
                 "l1/std_support_active": x_lateral[x_lateral_bin > 0].std().item(),
-                "l1/min_support_active": x_lateral[x_lateral_bin > 0].min().item(),
-                "l1/max_support_active": x_lateral[x_lateral_bin > 0].max().item(),
+                "l1/min_support_active": x_lateral[x_lateral_bin > 0].min().item() if torch.sum(x_lateral_bin > 0) > 0 else 0,
+                "l1/max_support_active": x_lateral[x_lateral_bin > 0].max().item() if torch.sum(x_lateral_bin > 0) > 0 else 0,
                 "l1/avg_support_inactive": x_lateral[x_lateral_bin <= 0].mean().item(),
                 "l1/std_support_inactive": x_lateral[x_lateral_bin <= 0].std().item(),
-                "l1/min_support_inactive": x_lateral[x_lateral_bin <= 0].min().item(),
-                "l1/max_support_inactive": x_lateral[x_lateral_bin <= 0].max().item(),
+                "l1/min_support_inactive": x_lateral[x_lateral_bin <= 0].min().item() if torch.sum(x_lateral_bin <= 0) > 0 else 0,
+                "l1/max_support_inactive": x_lateral[x_lateral_bin <= 0].max().item() if torch.sum(x_lateral_bin <= 0) > 0 else 0,
                 "l1/norm_factor": torch.mean(x_lateral / (1e-10 + x_lateral_norm)).item()
             }
 
@@ -566,7 +566,7 @@ class LateralLayerEfficientNetwork1L(nn.Module):
                 f"l1/weight_mean_{layer}": torch.mean(weight).item(),
                 f"l1/weight_std_{layer}": torch.std(weight).item(),
                 f"l1/weight_mean_{layer}_(0_ignored)": (
-                            torch.sum(weight * non_zero_mask) / torch.sum(non_zero_mask)).item(),
+                        torch.sum(weight * non_zero_mask) / torch.sum(non_zero_mask)).item(),
                 f"l1/weight_min_{layer}": torch.min(weight).item(),
                 f"l1/weight_max_{layer}": torch.max(weight).item(),
                 f"l1/weight_above_0.9_{layer}": torch.sum(weight >= 0.9).item() / weight.numel(),

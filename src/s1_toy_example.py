@@ -266,7 +266,7 @@ def single_train_epoch(
                          total=len(train_loader),
                          colour="GREEN",
                          desc=f"Train Epoch {epoch}/{config['run']['n_epochs']}"):
-        cycle(config, feature_extractor, lateral_network, l2, batch, i, epoch=epoch, store_tensors=False, mode="train",
+        cycle(config, feature_extractor, lateral_network, l2, batch[0], i, epoch=epoch, store_tensors=False, mode="train",
               fabric=fabric, l2_opt=l2_opt)
 
 
