@@ -178,12 +178,26 @@ class StraightLine(Dataset):
         draw.line(line_coords, fill=(255, 255, 255), width=1)
         return img
 
-    def _create_image(self, idx: int, line_coords: Optional[Tuple[Tuple[int, int], Tuple[int, int]]]) -> Image:
+    def _create_image(
+            self, idx: int,
+            line_coords: Tuple[Tuple[int, int], Tuple[int, int]],
+            noise: Optional[float] = None,
+            n_black_pixels: Optional[int] = None
+    ) -> Image:
         """
         Creates either a RBG or a grayscale image with a random straight line in withe drawn on it.
+        :param idx: The index of the image.
         :param line_coords: The coordinates of the line to draw.
+        :param noise: The noise to add to the image.
+        :param n_black_pixels: The number of black pixels to add to the middle of the line.
         :return: The image.
         """
+        if noise is None:
+            noise = self.noise
+
+        if n_black_pixels is None:
+            n_black_pixels = self.n_black_pixels
+
         if self.num_channels == 1:
             img = self._create_l_image(line_coords)
         elif self.num_channels == 3:
@@ -192,12 +206,14 @@ class StraightLine(Dataset):
             raise ValueError('num_channels must be 1 or 3')
 
         # add a black pixel in the middle (discontinous line)
-        if (self.split == 'val' or self.split == 'test') and (idx == 4 or idx == 5):
+        if n_black_pixels > 0:
             img = np.array(img)
             line_center = (line_coords[0][0] + line_coords[1][0]) // 2, (line_coords[0][1] + line_coords[1][1]) // 2
             all_line_coords = np.argwhere(img > 128)
-            center_point_idx = np.sum(np.abs(all_line_coords - np.array([line_center[1], line_center[0]]).reshape(1,2).repeat(all_line_coords.shape[0], axis=0)), axis=1).argmin()
-            n_black = min(self.n_black_pixels, all_line_coords.shape[0] - 2)
+            center_point_idx = np.sum(np.abs(
+                all_line_coords - np.array([line_center[1], line_center[0]]).reshape(1, 2).repeat(
+                    all_line_coords.shape[0], axis=0)), axis=1).argmin()
+            n_black = min(n_black_pixels, all_line_coords.shape[0] - 2)
             lower_idx = center_point_idx - n_black // 2
             upper_idx = center_point_idx + (n_black - (center_point_idx - lower_idx))
             idxs = np.array([list(all_line_coords[i]) for i in range(lower_idx, upper_idx)])
@@ -205,8 +221,8 @@ class StraightLine(Dataset):
             img = Image.fromarray(img.astype(np.uint8))
 
         # add noise
-        if self.noise > 0. or (self.split == 'val' or self.split == 'test') and (idx == 2 or idx == 3):
-            noise = self.noise if self.noise > 0. else 0.005
+        if noise > 0. or (self.split == 'val' or self.split == 'test') and (idx == 2 or idx == 3):
+            noise = noise if noise > 0. else 0.005
             img = np.array(img)
             img = img + np.random.choice(2, img.shape, p=[1 - noise, noise]) * 255
             img = Image.fromarray(img.astype(np.uint8))
@@ -216,29 +232,47 @@ class StraightLine(Dataset):
 
         return img
 
-    def __getitem__(self, idx: int):
+    def get_item(
+            self,
+            idx: int,
+            aug_strategy: Optional[str] = None,
+            line_coords: Optional[Tuple[Tuple[int, int], Tuple[int, int]]] = None,
+            noise: Optional[float] = None,
+            n_black_pixels: Optional[int] = None
+    ):
         """
         Returns an image with a random straight line drawn on it.
         :param idx: Index of the image to return (has no effect)
+        :param line_coords: The starting coordinates of the line to draw.
         :return: The image
         """
-        line_coords = self._get_random_line_coords(idx)
+        if line_coords is None:
+            line_coords = self._get_random_line_coords(idx)
 
-        if self.aug_strategy == 'random':
-            aug_line_coords = [self._slightly_change_line_coords_random(line_coords) for _ in range(self.num_aug_versions)]
+        if aug_strategy is None:
+            aug_strategy = self.aug_strategy
 
-        elif self.aug_strategy == 'trajectory':
+        if aug_strategy == 'random':
+            aug_line_coords = [self._slightly_change_line_coords_random(line_coords) for _ in
+                               range(self.num_aug_versions)]
+
+        elif aug_strategy == 'trajectory':
             aug_line_coords = self._change_line_coords_trajectory(line_coords, self.num_aug_versions)
 
         else:
             raise ValueError('aug_strategy must be "random" or "trajectory"')
 
-        images = [self._create_image(idx, line_coords)]
+        images = [self._create_image(idx, line_coords, noise=noise, n_black_pixels=n_black_pixels)]
         for aug_coords in aug_line_coords:
-            images.append(self._create_image(idx, aug_coords))
+            images.append(self._create_image(idx, aug_coords, noise=noise, n_black_pixels=n_black_pixels))
 
         images = torch.stack(images, dim=0) if self.num_aug_versions > 0 else images[0]
-        return images
+        return images, {'line_coords': line_coords, 'aug_line_coords': aug_line_coords}
+
+    def __getitem__(self, idx: int):
+        if (self.split == 'val' or self.split == 'test') and (idx == 4 or idx == 5):
+            return self.get_item(idx, n_black_pixels=1)
+        return self.get_item(idx)
 
 
 def _plot_some_samples():
@@ -258,7 +292,7 @@ def _plot_some_samples():
 
     fig, axs = plt.subplots(10, 10, figsize=(10, 10))
     for i in range(10):
-        img = dataset[i]
+        img, meta = dataset[i]
         for idx in range(img.shape[0]):
             j = i * 10 + idx
             axs[j // 10, j % 10].imshow(img[idx].squeeze(), vmin=0, vmax=1, cmap='gray', interpolation='none')

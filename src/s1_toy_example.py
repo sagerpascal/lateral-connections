@@ -300,10 +300,11 @@ def single_eval_epoch(
             features, input_features, lateral_features, lateral_features_f, l2_features = cycle(config,
                                                                                                 feature_extractor,
                                                                                                 lateral_network, l2,
-                                                                                                batch, i, epoch=epoch,
+                                                                                                batch[0], i,
+                                                                                                epoch=epoch,
                                                                                                 store_tensors=True,
                                                                                                 mode="eval")
-            plt_img.append(batch)
+            plt_img.append(batch[0])
             plt_features.append(features)
             plt_input_features.append(input_features)
             plt_activations.append(lateral_features)
