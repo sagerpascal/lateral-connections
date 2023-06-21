@@ -181,8 +181,8 @@ class LateralLayer(nn.Module):
             update = torch.where(update > 0., update, 0.)
             update = (update - update.min()) / (update.max() - update.min() + 1e-10)
             updated_weights = torch.where(update.reshape((self.out_channels, self.in_channels) + self.kernel_size) > 0)
-            if len(torch.where((updated_weights[0] != updated_weights[1]) & ((4+updated_weights[0]) != updated_weights[1]))[0]) > 0:
-                print("updated_weights not diagonal")
+            #if len(torch.where((updated_weights[0] != updated_weights[1]) & ((4+updated_weights[0]) != updated_weights[1]))[0]) > 0:
+            #    print("updated_weights not diagonal")
 
             self.W_lateral.data += self.lr * update.view(self.W_lateral.shape)
             self.W_lateral.data = self.W_lateral.data / (1e-10 + torch.sqrt(
