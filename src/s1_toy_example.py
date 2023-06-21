@@ -425,13 +425,13 @@ def main():
         #l2_sched.load_state_dict(state['l2_sched'])
 
     feature_extractor.eval()  # does not have to be trained
-    if 'store_path' in config['run']['plots'] and config['run']['plots']['store_path'] != 'None':
+    if 'store_path' in config['run']['plots'] and config['run']['plots']['store_path'] is not None and config['run']['plots']['store_path'] != 'None':
         fp = Path(config['run']['plots']['store_path'])
         if not fp.exists():
             fp.mkdir(parents=True, exist_ok=True)
     train(config, feature_extractor, lateral_network, l2, train_loader, test_loader, fabric, l2_opt, l2_sched)
 
-    if 'store_state_path' in config['run'] and config['run']['store_state_path'] != 'None':
+    if 'store_state_path' in config['run'] and config['run']['store_state_path'] is not None and config['run']['store_state_path'] != 'None':
         save_run(config, fabric,
                  components={'feature_extractor': feature_extractor, 'lateral_network': lateral_network, 'l2': l2,
                              'l2_opt': l2_opt, 'l2_sched': l2_sched.state_dict()})
