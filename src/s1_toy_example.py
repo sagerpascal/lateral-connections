@@ -319,6 +319,9 @@ def single_eval_epoch(
     assert not wandb_b or wandb_b and store_plots, "Wandb logging requires storing the plots."
 
     if plot or wandb_b or store_plots:
+        if epoch == 0:
+            feature_extractor.plot_model_weights(show_plot=plot)
+
         plots_fp = lateral_network.plot_samples(plt_img,
                                                 plt_features,
                                                 plt_input_features,

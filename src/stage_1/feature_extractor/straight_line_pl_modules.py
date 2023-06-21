@@ -146,6 +146,51 @@ class FixedFilterFeatureExtractor(pl.LightningModule):
         return Conv2dFixedFilters(self.fabric, add_bg_channel=self.conf["feature_extractor"]["add_bg_channel"])
         # return FixedDogFilter(filter_size=12, fabric=self.fabric)
 
+    def plot_model_weights(self, show_plot: Optional[bool] = False) -> List[Path]:
+        """
+        Plot a histogram of the model weights.
+        :param show_plot: Whether to show the plot.
+        :return: List of paths to the plots.
+        """
+
+        def _hist_plot(ax, weight, title):
+            bins = 20
+            min, max = torch.min(weight).item(), torch.max(weight).item()
+            hist = torch.histc(weight, bins=bins, min=min, max=max)
+            x = np.linspace(min, max, bins)
+            ax.bar(x, hist, align='center')
+            ax.set_xlabel(f'Bins form {min:.4f} to {max:.4f}')
+            ax.set_title(title)
+
+        def _plot_weights(ax, weight, title):
+            weight_img_list = [weight[i, j].unsqueeze(0) for j in range(weight.shape[1]) for i in
+                               range(weight.shape[0])]
+            # Order is [(0, 0), (1, 0), ..., (3, 0), (0, 1), ..., (3, 7)]
+            # The columns show the output channels, the rows the input channels
+            grid = utils.make_grid(weight_img_list, nrow=weight.shape[0], normalize=True, scale_each=True, pad_value=1)
+            ax.imshow(grid.permute(1, 2, 0), interpolation='none')
+            ax.set_title(title)
+
+        files = []
+        for layer, weight in [('feature extractor', self.model.weight)]:
+            fig, axs = plt.subplots(1, 2, figsize=(8, 5))
+            _hist_plot(axs[0], weight.detach().cpu(), f"Weight distribution ({layer})")
+            _plot_weights(axs[1], weight[:20, :20, ...].detach().cpu(), f"Weight matrix ({layer})")
+            plt.tight_layout()
+
+            fig_fp = self.conf['run']['plots'].get('store_path', None)
+
+            if fig_fp is not None and fig_fp != "None":
+                fp = Path(fig_fp) / f'weights_{layer}.png'
+                plt.savefig(fp)
+                files.append(fp)
+
+            if show_plot:
+                plt.show()
+
+            plt.close()
+        return files
+
     def visualize_encodings(self, x: Tensor):
         """
         Visualize the features of a batch of images.
