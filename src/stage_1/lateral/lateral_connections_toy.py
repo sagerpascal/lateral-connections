@@ -240,7 +240,7 @@ class LateralLayer(nn.Module):
             # TODO: Over timesteps; increase probability at beginning a little bit and slightly decrease this
             #  additional boost over time -> sparsity over time
             # TODO: In weights of lateral support: Mask out center pixel so that it only depends on the neighborhood
-            x_lateral_bin = (x_lateral_norm ** 3 >= 0.8).float()
+            x_lateral_bin = (x_lateral_norm ** 3 >= 0.5).float()
             # x_lateral_bin = torch.bernoulli(torch.clip(x_lateral_norm ** 5, 0, 1))
 
             # TODO:
