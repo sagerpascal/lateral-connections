@@ -174,7 +174,15 @@ class LateralLayer(nn.Module):
 
         if self.hebbian_rule == "vanilla":
             update = torch.mean((pos_co_activation - neg_co_activation), dim=0)
+            # TODO: is this normalization necessary?
+            # update.reshape((self.out_channels, self.in_channels) + self.kernel_size)
+            # why is there a value somwhere expect the diagonal??
+            update = torch.where(update > 0., update, 0.)
             update = (update - update.min()) / (update.max() - update.min() + 1e-10)
+            updated_weights = torch.where(update.reshape((self.out_channels, self.in_channels) + self.kernel_size) > 0)
+            if len(torch.where((updated_weights[0] != updated_weights[1]) & ((4+updated_weights[0]) != updated_weights[1]))[0]) > 0:
+                print("updated_weights not diagonal")
+
             self.W_lateral.data += self.lr * update.view(self.W_lateral.shape)
             self.W_lateral.data = self.W_lateral.data / (1e-10 + torch.sqrt(
                 torch.sum(self.W_lateral.data ** 2, dim=[1, 2, 3], keepdim=True)))  # Weight normalization
@@ -220,8 +228,8 @@ class LateralLayer(nn.Module):
             # x_lateral_norm = torch.where(10 * x_lateral_norm <= 1, 10 * x_lateral_norm, 1 - (x_lateral_norm * 10 - 1))
 
             x_lateral_norm_s = x_lateral_norm.shape
-            x_lateral_norm /= x_lateral_norm.view(-1, x_lateral_norm_s[2] * x_lateral_norm_s[3]).max(1)[0].view(
-                x_lateral_norm_s[:2] + (1, 1))
+            x_lateral_norm /= (1e-10 + x_lateral_norm.view(-1, x_lateral_norm_s[2] * x_lateral_norm_s[3]).max(1)[0].view(
+                x_lateral_norm_s[:2] + (1, 1)))
 
             # TODO: Test with / without average (two lines below)
             # TODO: Test with using x_lateral_bin_prev instead of x_lateral_norm_prev

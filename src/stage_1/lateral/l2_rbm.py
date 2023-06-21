@@ -195,9 +195,9 @@ class L2RBM(BaseLitModule):
                         # plt_images.append(F.pad(act_i[batch_idx, view_idx], (0, 0, 13, 14), "constant", 0.5))
                         plt_titles.append(f"V={view_idx} F={feature_idx} L2")
 
-                fig_fp = Path(self.conf['run']['plots'].get('store_path', None))
+                fig_fp = self.conf['run']['plots'].get('store_path', None)
                 if fig_fp is not None:
-                    fig_fp = fig_fp / f"l2_B={batch_idx}.png"
+                    fig_fp = Path(fig_fp) / f"l2_B={batch_idx}.png"
                 plt_images = self._normalize_image_list(plt_images)
                 plot_images(images=plt_images, titles=plt_titles, max_cols=act_i.shape[3] + 1, plot_colorbar=True,
                             vmin=0, vmax=1, fig_fp=fig_fp, show_plot=show_plot)
