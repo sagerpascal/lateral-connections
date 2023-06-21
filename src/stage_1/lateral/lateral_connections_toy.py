@@ -165,15 +165,16 @@ class LateralLayer(nn.Module):
         x_v = x.permute(0, 2, 3, 1).reshape(-1, 1, x.shape[1])
         y_v = y.permute(0, 2, 3, 1).reshape(-1, y.shape[1], 1)
         pos_co_activation = torch.matmul(y_v, x_v)
-        neg_co_activation = torch.matmul(y_v, 1 - x_v) + torch.matmul(1 - y_v, x_v)
+        # neg_co_activation = torch.matmul(y_v, 1 - x_v) + torch.matmul(1 - y_v, x_v)
         assert torch.all(pos_co_activation >= 0) and torch.all(pos_co_activation <= 1), "pos_co_activation not in [0,1]"
-        assert torch.all(neg_co_activation >= 0.) and torch.all(
-            neg_co_activation <= 1), "neg_co_activation not in [0,1]"
-        assert not torch.any(
-            (pos_co_activation > 0) * (neg_co_activation > 0)), "pos_co_activation and neg_co_activation overlap"
+        # assert torch.all(neg_co_activation >= 0.) and torch.all(
+        #     neg_co_activation <= 1), "neg_co_activation not in [0,1]"
+        # assert not torch.any(
+        #     (pos_co_activation > 0) * (neg_co_activation > 0)), "pos_co_activation and neg_co_activation overlap"
 
         if self.hebbian_rule == "vanilla":
-            update = torch.mean((pos_co_activation - neg_co_activation), dim=0)
+            # update = torch.mean((pos_co_activation - neg_co_activation), dim=0)
+            update = torch.mean(pos_co_activation, dim=0)
             # TODO: is this normalization necessary?
             # update.reshape((self.out_channels, self.in_channels) + self.kernel_size)
             # why is there a value somwhere expect the diagonal??
