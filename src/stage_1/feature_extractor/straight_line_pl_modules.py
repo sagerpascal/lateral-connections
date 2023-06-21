@@ -1,4 +1,5 @@
-from typing import Any, Dict, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 import lightning.pytorch as pl
 import numpy as np
@@ -7,7 +8,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from lightning import Fabric
+from matplotlib import pyplot as plt
 from torch import Tensor
+from torchvision import utils
 
 from data import plot_images
 
@@ -24,20 +27,34 @@ class Conv2dFixedFilters(nn.Module):
         :param add_bg_channel: Whether to add a background channel to the input.
         """
         super(Conv2dFixedFilters, self).__init__()
+        # self.weight = torch.tensor([[[[-1, +2, -1],
+        #                               [-1, +2, -1],
+        #                               [-1, +2, -1]]],
+        #                             [[[-1, -1, +2],
+        #                               [-1, +2, -1],
+        #                               [+2, -1, -1]]],
+        #                             [[[-1, -1, -1],
+        #                               [+2, +2, +2],
+        #                               [-1, -1, -1]]],
+        #                             [[[+2, -1, -1],
+        #                               [-1, +2, -1],
+        #                               [-1, -1, +2]]],
+        #                             ], dtype=torch.float32, requires_grad=False).to(fabric.device)
+        # self.weight = self.weight / 3
         self.weight = torch.tensor([[[[-1, +2, -1],
                                       [-1, +2, -1],
                                       [-1, +2, -1]]],
-                                    [[[-1, -1, +2],
-                                      [-1, +2, -1],
-                                      [+2, -1, -1]]],
+                                    [[[+0, -2, +2],
+                                      [-2, +2, -2],
+                                      [+2, -2, +0]]],
                                     [[[-1, -1, -1],
                                       [+2, +2, +2],
                                       [-1, -1, -1]]],
-                                    [[[+2, -1, -1],
-                                      [-1, +2, -1],
-                                      [-1, -1, +2]]],
+                                    [[[+2, -2, +0],
+                                      [-2, +2, -2],
+                                      [+0, -2, +2]]],
                                     ], dtype=torch.float32, requires_grad=False).to(fabric.device)
-        self.weight = self.weight / 3
+        self.weight = self.weight / 6
         self.add_bg_channel = add_bg_channel
 
     def apply_conv(self, x: Tensor) -> Tensor:

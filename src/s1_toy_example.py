@@ -198,7 +198,8 @@ def cycle(
     input_features, lateral_features, lateral_features_f, l2_features = [], [], [], []
     for view_idx in range(features.shape[1]):
         x_view_features = features[:, view_idx, ...]
-        x_view_features = torch.where(x_view_features > 0., 1., 0.)
+        # x_view_features = torch.where(x_view_features > 0., 1., 0.)
+        x_view_features = torch.where(x_view_features > 0.5, 1., 0.)
         if store_tensors:
             input_features.append(x_view_features)
 
@@ -373,7 +374,8 @@ def train(
         lateral_network.on_epoch_end()  # print logs
 
     for epoch in range(start_epoch, config['run']['n_epochs']):
-        single_train_epoch(config, feature_extractor, lateral_network, l2, train_loader, epoch + 1, fabric, l2_opt)
+        for _ in range(10):
+            single_train_epoch(config, feature_extractor, lateral_network, l2, train_loader, epoch + 1, fabric, l2_opt)
         single_eval_epoch(config, feature_extractor, lateral_network, l2, test_loader, epoch + 1)
         lateral_network.on_epoch_end()
         l2_logs = l2.on_epoch_end()

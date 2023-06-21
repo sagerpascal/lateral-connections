@@ -74,10 +74,14 @@ class StraightLine(Dataset):
         :return: a Tuple of two Tuples of x,y coordinates.
         """
         # TODO: Delete this (always the same 2 lines)
-        if idx % 2 == 0:
+        if idx % 4 == 0:
             return (2, 15), (30, 15)
-        elif idx % 2 == 1:
+        elif idx % 4 == 1:
             return (15, 2), (15, 30)
+        elif idx % 4 == 2:
+            return (2, 2), (30, 30)
+        elif idx % 4 == 3:
+            return (2, 30), (30, 2)
 
         # encourage longer lines
         x1 = random.randint(0, self.img_w // 2)
@@ -221,7 +225,7 @@ class StraightLine(Dataset):
             img = Image.fromarray(img.astype(np.uint8))
 
         # add noise
-        if noise > 0. or (self.split == 'val' or self.split == 'test') and (idx == 2 or idx == 3):
+        if noise > 0. or (self.split == 'val' or self.split == 'test') and (idx == 4 or idx == 5 or idx == 6 or idx == 7):
             noise = noise if noise > 0. else 0.005
             img = np.array(img)
             img = img + np.random.choice(2, img.shape, p=[1 - noise, noise]) * 255
@@ -270,7 +274,7 @@ class StraightLine(Dataset):
         return images, {'line_coords': line_coords, 'aug_line_coords': aug_line_coords}
 
     def __getitem__(self, idx: int):
-        if (self.split == 'val' or self.split == 'test') and (idx == 4 or idx == 5):
+        if (self.split == 'val' or self.split == 'test') and (idx == 8 or idx == 9 or idx == 10 or idx == 11):
             return self.get_item(idx, n_black_pixels=1)
         return self.get_item(idx)
 
