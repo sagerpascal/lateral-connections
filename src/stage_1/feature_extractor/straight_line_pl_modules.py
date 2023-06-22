@@ -20,41 +20,51 @@ class Conv2dFixedFilters(nn.Module):
     Fixed 2D convolutional layer with 4 filters that detect straight lines.
     """
 
-    def __init__(self, fabric: Fabric, add_bg_channel: Optional[bool] = False):
+    def __init__(
+            self,
+            fabric: Fabric,
+            add_bg_channel: Optional[bool] = False,
+            optimized_filter_lines: Optional[bool] = False
+    ):
         """
         Initializes the layer with the fixed filters.
         :param fabric: Fabric instance.
         :param add_bg_channel: Whether to add a background channel to the input.
+        :param optimized_filter_lines: Whether to use a filter that is optimized for detecting straight lines
         """
         super(Conv2dFixedFilters, self).__init__()
-        # self.weight = torch.tensor([[[[-1, +2, -1],
-        #                               [-1, +2, -1],
-        #                               [-1, +2, -1]]],
-        #                             [[[-1, -1, +2],
-        #                               [-1, +2, -1],
-        #                               [+2, -1, -1]]],
-        #                             [[[-1, -1, -1],
-        #                               [+2, +2, +2],
-        #                               [-1, -1, -1]]],
-        #                             [[[+2, -1, -1],
-        #                               [-1, +2, -1],
-        #                               [-1, -1, +2]]],
-        #                             ], dtype=torch.float32, requires_grad=False).to(fabric.device)
-        # self.weight = self.weight / 3
-        self.weight = torch.tensor([[[[-1, +2, -1],
-                                      [-1, +2, -1],
-                                      [-1, +2, -1]]],
-                                    [[[+0, -2, +2],
-                                      [-2, +2, -2],
-                                      [+2, -2, +0]]],
-                                    [[[-1, -1, -1],
-                                      [+2, +2, +2],
-                                      [-1, -1, -1]]],
-                                    [[[+2, -2, +0],
-                                      [-2, +2, -2],
-                                      [+0, -2, +2]]],
-                                    ], dtype=torch.float32, requires_grad=False).to(fabric.device)
-        self.weight = self.weight / 6
+
+        if optimized_filter_lines:
+            self.weight = torch.tensor([[[[-1, +2, -1],
+                                          [-1, +2, -1],
+                                          [-1, +2, -1]]],
+                                        [[[+0, -2, +2],
+                                          [-2, +2, -2],
+                                          [+2, -2, +0]]],
+                                        [[[-1, -1, -1],
+                                          [+2, +2, +2],
+                                          [-1, -1, -1]]],
+                                        [[[+2, -2, +0],
+                                          [-2, +2, -2],
+                                          [+0, -2, +2]]],
+                                        ], dtype=torch.float32, requires_grad=False).to(fabric.device)
+            self.weight = self.weight / 6
+        else:
+            self.weight = torch.tensor([[[[-1, +2, -1],
+                                          [-1, +2, -1],
+                                          [-1, +2, -1]]],
+                                        [[[-1, -1, +2],
+                                          [-1, +2, -1],
+                                          [+2, -1, -1]]],
+                                        [[[-1, -1, -1],
+                                          [+2, +2, +2],
+                                          [-1, -1, -1]]],
+                                        [[[+2, -1, -1],
+                                          [-1, +2, -1],
+                                          [-1, -1, +2]]],
+                                        ], dtype=torch.float32, requires_grad=False).to(fabric.device)
+            self.weight = self.weight / 3
+
         self.add_bg_channel = add_bg_channel
 
     def apply_conv(self, x: Tensor) -> Tensor:
@@ -145,6 +155,7 @@ class FixedFilterFeatureExtractor(pl.LightningModule):
         super().__init__()
         self.conf = conf
         self.fabric = fabric
+        self.bin_threshold = conf["feature_extractor"]["bin_threshold"]
         self.model = self.configure_model()
 
     def forward(self, x: Tensor) -> Tensor:
@@ -155,12 +166,21 @@ class FixedFilterFeatureExtractor(pl.LightningModule):
         """
         return self.model(x)
 
+    def binarize_features(self, x: Tensor) -> Tensor:
+        """
+        Convert float tensor to binary tensor
+        :param x: Features as float
+        :return: Binarized Features
+        """
+        return torch.where(x > self.bin_threshold, 1., 0.)
+
     def configure_model(self) -> nn.Module:
         """
            Configures the model.
            :return: The model.
            """
-        return Conv2dFixedFilters(self.fabric, add_bg_channel=self.conf["feature_extractor"]["add_bg_channel"])
+        return Conv2dFixedFilters(self.fabric, add_bg_channel=self.conf["feature_extractor"]["add_bg_channel"],
+                                  optimized_filter_lines=self.conf["feature_extractor"]["optimized_filter_lines"])
         # return FixedDogFilter(filter_size=12, fabric=self.fabric)
 
     def plot_model_weights(self, show_plot: Optional[bool] = False) -> List[Path]:
