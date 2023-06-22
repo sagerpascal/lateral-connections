@@ -10,7 +10,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV TORCH_NVCC_FLAGS="-Xfatbin -compress-all"
 ENV CMAKE_PREFIX_PATH="$(dirname $(which conda))/../"
 
-RUN apt-get update && apt-get install -y libglib2.0-0 libsm6 libxrender-dev libxext6 git tzdata \
+RUN apt-get update && apt-get install -y libglib2.0-0 libsm6 libxrender-dev libxext6 git tzdata vim \
 && apt-get clean \
 && rm -rf /var/lib/apt/lists/*
 
