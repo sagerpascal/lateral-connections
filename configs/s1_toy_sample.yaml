@@ -9,9 +9,9 @@ run:
   n_epochs: 15
   current_epoch: 0
   plots:
-    enable: False
+    enable: True
     only_last_epoch: False
-    store_path: null
+    store_path: "../tmp/test/"
   store_state_path: None
   load_state_path: None
 
