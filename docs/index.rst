@@ -14,6 +14,7 @@ Welcome to Lateral Connections's documentation!
    results/report_230601
    results/report_230608
    results/l2_230617
+   results/report_230623
 
 Sidenote to myself: Documentation of the entire code can be created by running `sphinx-apidoc -o docs/code src/`
 
