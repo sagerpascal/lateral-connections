@@ -82,3 +82,5 @@ lateral_model:
     locality_size: 3
     lr: 0.005
     hebbian_rule: 'vanilla'
+    neg_corr: False
+    act_threshold: 0.7

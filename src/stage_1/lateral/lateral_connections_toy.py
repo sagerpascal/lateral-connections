@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import lightning.pytorch as pl
 import matplotlib.pyplot as plt
@@ -32,6 +32,8 @@ class LateralLayer(nn.Module):
                  locality_size: Optional[int] = 2,
                  lr: Optional[float] = 0.0005,
                  hebbian_rule: Optional[HEBBIAN_ALGO] = 'vanilla',
+                 neg_corr: Optional[bool] = False,
+                 act_threshold: Optional[Union[Literal["bernoulli"] | float]] = "bernoulli",
                  ):
         """
         Lateral Layer trained with Hebbian Learning. The input and output of this layer are binary.
@@ -59,6 +61,9 @@ class LateralLayer(nn.Module):
         example, if locality_size = 2, then each neuron is connected to 5 neurons on each side of it.
         :param lr: Learning rate.
         :param hebbian_rule: Which Hebbian rule to use.
+        :param neg_corr: Whether to consider negative correlation during Hebbian updates.
+        :param act_threshold: The activation threshold: Either "bernoulli" to sample from a Bernoulli distribution or
+        a float value as fixed threshold
         """
         super().__init__()
         self.fabric = fabric
@@ -69,6 +74,13 @@ class LateralLayer(nn.Module):
         self.kernel_size = (self.neib_size, self.neib_size)
         self.lr = lr
         self.hebbian_rule = hebbian_rule
+        self.neg_corr = neg_corr
+        self.act_threshold = act_threshold
+
+        assert self.hebbian_rule in ['vanilla'], \
+            f"hebbian_rule must be 'vanilla', but is {self.hebbian_rule}"
+        assert self.act_threshold in ['bernoulli'] or isinstance(self.act_threshold, float), \
+            f"act_threshold must be either 'bernoulli' or a float, but is {self.act_threshold}"
 
         self.W_rearrange = self._init_rearrange_weights()
         self.W_lateral = nn.Parameter(self._init_lateral_weights())
@@ -165,23 +177,28 @@ class LateralLayer(nn.Module):
         x_v = x.permute(0, 2, 3, 1).reshape(-1, 1, x.shape[1])
         y_v = y.permute(0, 2, 3, 1).reshape(-1, y.shape[1], 1)
         pos_co_activation = torch.matmul(y_v, x_v)
-        # neg_co_activation = torch.matmul(y_v, 1 - x_v) + torch.matmul(1 - y_v, x_v)
         assert torch.all(pos_co_activation >= 0) and torch.all(pos_co_activation <= 1), "pos_co_activation not in [0,1]"
-        # assert torch.all(neg_co_activation >= 0.) and torch.all(
-        #     neg_co_activation <= 1), "neg_co_activation not in [0,1]"
-        # assert not torch.any(
-        #     (pos_co_activation > 0) * (neg_co_activation > 0)), "pos_co_activation and neg_co_activation overlap"
+        if self.neg_corr:
+            neg_co_activation = torch.matmul(y_v, 1 - x_v) + torch.matmul(1 - y_v, x_v)
+            assert torch.all(neg_co_activation >= 0.) and torch.all(
+                neg_co_activation <= 1), "neg_co_activation not in [0,1]"
+            assert not torch.any(
+                (pos_co_activation > 0) * (neg_co_activation > 0)), "pos_co_activation and neg_co_activation overlap"
 
         if self.hebbian_rule == "vanilla":
-            # update = torch.mean((pos_co_activation - neg_co_activation), dim=0)
-            update = torch.mean(pos_co_activation, dim=0)
+            if self.neg_corr:
+                update = torch.mean((pos_co_activation - neg_co_activation), dim=0)
+            else:
+                update = torch.mean(pos_co_activation, dim=0)
+
             # TODO: is this normalization necessary?
             # update.reshape((self.out_channels, self.in_channels) + self.kernel_size)
             # why is there a value somwhere expect the diagonal??
             update = torch.where(update > 0., update, 0.)
             update = (update - update.min()) / (update.max() - update.min() + 1e-10)
             updated_weights = torch.where(update.reshape((self.out_channels, self.in_channels) + self.kernel_size) > 0)
-            #if len(torch.where((updated_weights[0] != updated_weights[1]) & ((4+updated_weights[0]) != updated_weights[1]))[0]) > 0:
+            # if len(torch.where((updated_weights[0] != updated_weights[1]) & ((4+updated_weights[0]) !=
+            # updated_weights[1]))[0]) > 0:
             #    print("updated_weights not diagonal")
 
             self.W_lateral.data += self.lr * update.view(self.W_lateral.shape)
@@ -189,16 +206,6 @@ class LateralLayer(nn.Module):
                 torch.sum(self.W_lateral.data ** 2, dim=[1, 2, 3], keepdim=True)))  # Weight normalization
         else:
             raise NotImplementedError(f"Hebbian rule {self.hebbian_rule} not implemented.")
-
-    def make_gaussian(self, size, fwhm=3, center=None):
-        x = torch.arange(0, size, 1, dtype=torch.float)
-        y = x.unsqueeze(1)
-        if center is None:
-            x0 = y0 = size // 2
-        else:
-            x0 = center[0]
-            y0 = center[1]
-        return torch.exp(-4 * torch.log(torch.Tensor([2])) * ((x - x0) ** 2 + (y - y0) ** 2) / fwhm ** 2)
 
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Dict[str, float]]:
         with torch.no_grad():
@@ -212,37 +219,28 @@ class LateralLayer(nn.Module):
             # Normalize by dividing through the max. possible activation (if all weights were 1)
             x_max_act = F.conv2d(x_rearranged, torch.ones_like(self.W_lateral.data), padding="same")
             min_support = self.kernel_size[0]
-            # x_max_act[x_max_act > 0] = torch.where(x_max_act[x_max_act > 0] < min_support, min_support,
-            # x_max_act[x_max_act > 0])
             x_max_act = torch.where(x_max_act < min_support, min_support, x_max_act)
             x_lateral_norm = x_lateral / x_max_act
 
-            # TODO: Delme
-            # if not hasattr(self, "dist_filter"):
-            #     self.dist_filter = self.makeGaussian(7, 5).to(self.W_lateral.device)
-            # delme_weight = (2 - torch.ones_like(self.W_lateral.data).reshape((self.out_channels, self.in_channels)
-            # + self.kernel_size) * self.dist_filter.view((1,1) + self.kernel_size)).reshape(self.W_lateral.shape)
-            # x_lateral_norm = (x_lateral / (1e-10+F.conv2d(x_rearranged, delme_weight, padding="same")))
+            # Normalize by dividing through the sum of the weights
             x_lateral_norm = x_lateral_norm / (1e-10 + torch.sum(self.W_lateral.data, dim=(1, 2, 3)).view(1, -1, 1, 1))
 
-            # reduce weight at a certain point if it is too high (does not help a lot...)
+            # reduce weight at a certain point if it is too high (Inhibition)
             # x_lateral_norm = torch.where(10 * x_lateral_norm <= 1, 10 * x_lateral_norm, 1 - (x_lateral_norm * 10 - 1))
 
             x_lateral_norm_s = x_lateral_norm.shape
-            x_lateral_norm /= (1e-10 + x_lateral_norm.view(-1, x_lateral_norm_s[2] * x_lateral_norm_s[3]).max(1)[0].view(
-                x_lateral_norm_s[:2] + (1, 1)))
+            x_lateral_norm /= (
+                        1e-10 + x_lateral_norm.view(-1, x_lateral_norm_s[2] * x_lateral_norm_s[3]).max(1)[0].view(
+                    x_lateral_norm_s[:2] + (1, 1)))
 
-            # TODO: Test with / without average (two lines below)
-            # TODO: Test with using x_lateral_bin_prev instead of x_lateral_norm_prev
             if self.ts > 0:
                 x_lateral_norm = (x_lateral_norm + self.ts * self.x_lateral_norm_prev) / (self.ts + 1)
             self.x_lateral_norm_prev = x_lateral_norm
 
-            # TODO: Over timesteps; increase probability at beginning a little bit and slightly decrease this
-            #  additional boost over time -> sparsity over time
-            # TODO: In weights of lateral support: Mask out center pixel so that it only depends on the neighborhood
-            x_lateral_bin = (x_lateral_norm ** 3 >= 0.5).float()
-            # x_lateral_bin = torch.bernoulli(torch.clip(x_lateral_norm ** 5, 0, 1))
+            if self.act_threshold == "bernoulli":
+                x_lateral_bin = torch.bernoulli(torch.clip(x_lateral_norm ** 3, 0, 1))
+            else:
+                x_lateral_bin = (x_lateral_norm ** 3 >= self.act_threshold).float()
 
             # TODO:
             # if self.training and self.ts == 4:
@@ -252,12 +250,16 @@ class LateralLayer(nn.Module):
             stats = {
                 "l1/avg_support_active": x_lateral[x_lateral_bin > 0].mean().item(),
                 "l1/std_support_active": x_lateral[x_lateral_bin > 0].std().item(),
-                "l1/min_support_active": x_lateral[x_lateral_bin > 0].min().item() if torch.sum(x_lateral_bin > 0) > 0 else 0,
-                "l1/max_support_active": x_lateral[x_lateral_bin > 0].max().item() if torch.sum(x_lateral_bin > 0) > 0 else 0,
+                "l1/min_support_active": x_lateral[x_lateral_bin > 0].min().item() if torch.sum(
+                    x_lateral_bin > 0) > 0 else 0,
+                "l1/max_support_active": x_lateral[x_lateral_bin > 0].max().item() if torch.sum(
+                    x_lateral_bin > 0) > 0 else 0,
                 "l1/avg_support_inactive": x_lateral[x_lateral_bin <= 0].mean().item(),
                 "l1/std_support_inactive": x_lateral[x_lateral_bin <= 0].std().item(),
-                "l1/min_support_inactive": x_lateral[x_lateral_bin <= 0].min().item() if torch.sum(x_lateral_bin <= 0) > 0 else 0,
-                "l1/max_support_inactive": x_lateral[x_lateral_bin <= 0].max().item() if torch.sum(x_lateral_bin <= 0) > 0 else 0,
+                "l1/min_support_inactive": x_lateral[x_lateral_bin <= 0].min().item() if torch.sum(
+                    x_lateral_bin <= 0) > 0 else 0,
+                "l1/max_support_inactive": x_lateral[x_lateral_bin <= 0].max().item() if torch.sum(
+                    x_lateral_bin <= 0) > 0 else 0,
                 "l1/norm_factor": torch.mean(x_lateral / (1e-10 + x_lateral_norm)).item()
             }
 
