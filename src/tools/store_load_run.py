@@ -14,7 +14,7 @@ def _warn_different_configs(config: Dict[str, Optional[Any]], config_old: Dict[s
     :param config_old: Old configuration
     """
     diff = DeepDiff(config_old, config)
-    keys_ignored = ["store_state_path", "load_state_path", "current_epoch", "n_epochs"]
+    keys_ignored = ["store_state_path", "load_state_path", "current_epoch", "n_epochs", "['logging']['wandb']['active']", "'logging:wandb:active'", "['run']['plots']['enable']", "'run:plots:enable'"]
     removed_items = [r for r in list(diff.get("dictionary_item_removed", [])) if
                      not bool([k for k in keys_ignored if k in r])]
     added_items = [a for a in list(diff.get("dictionary_item_added", [])) if
