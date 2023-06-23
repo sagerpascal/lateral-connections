@@ -59,6 +59,8 @@ logging:
 feature_extractor:
   out_channels: 4
   add_bg_channel: False
+  bin_threshold: 0.  # set to 0.5 to obtain better features
+  optimized_filter_lines: True # set to True to obtain better features
 
 lateral_model:
   channels: 4

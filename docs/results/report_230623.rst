@@ -3,6 +3,12 @@ Status 23 June, 2023
 
 Fixed a bug related to the normalisation of the lateral weights.
 
+Vertical Filters
+----------------
+
+.. image:: /_static/results/230623/00.png
+  :width: 800
+
 
 With Negative Correlation
 -------------------------

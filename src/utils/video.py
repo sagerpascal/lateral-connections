@@ -3,7 +3,7 @@ import subprocess
 from pathlib import Path
 from typing import Optional, Union
 
-from utils import print_info_data
+from utils import print_exception, print_info_data
 
 
 def create_video_from_images_ffmpeg(
@@ -21,7 +21,11 @@ def create_video_from_images_ffmpeg(
 
     command = f"ffmpeg -framerate {fps} -pattern_type glob -i '{images}/*.png' -c:v libx264 -pix_fmt yuv420p {video_fp} -y"
 
-    with open(os.devnull, 'wb') as devnull:
-        subprocess.check_call([command], shell=True, stdout=devnull, stderr=subprocess.STDOUT)
+    try:
+        with open(os.devnull, 'wb') as devnull:
+            subprocess.check_call([command], shell=True, stdout=devnull, stderr=subprocess.STDOUT)
 
-    print_info_data(f"Video saved to {video_fp}")
+        print_info_data(f"Video saved to {video_fp}")
+
+    except Exception as e:
+        print_exception(e)

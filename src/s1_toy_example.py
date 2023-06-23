@@ -198,7 +198,7 @@ def cycle(
     input_features, lateral_features, lateral_features_f, l2_features = [], [], [], []
     for view_idx in range(features.shape[1]):
         x_view_features = features[:, view_idx, ...]
-        x_view_features = torch.where(x_view_features > 0., 1., 0.)
+        x_view_features = feature_extractor.binarize_features(x_view_features)
         if store_tensors:
             input_features.append(x_view_features)
 
