@@ -1,6 +1,6 @@
 import random
 import warnings
-from typing import Any, Dict, Generator, List, Optional, Tuple
+from typing import Any, Dict, Generator, Iterator, List, Optional, Tuple
 
 import cv2
 import lightning.pytorch as pl
@@ -314,7 +314,7 @@ def load_models() -> Tuple[Dict[str, Any], Fabric, pl.LightningModule, pl.Lightn
     return config, fabric, feature_extractor, lateral_network, l2
 
 
-def load_data_generator() -> Generator[Tuple[Tensor, List[Dict[str, Any]]]]:
+def load_data_generator() -> Iterator[Tuple[Tensor, List[Dict[str, Any]]]]:
     """
     Loads the data generator
     :return: Data generator
@@ -360,7 +360,7 @@ def predict_sample(
 
 
 def process_data(
-        generator: Generator,
+        generator: Iterator[Tuple[Tensor, List[Dict[str, Any]]]],
         config: Dict[str, Any],
         fabric: Fabric,
         feature_extractor: pl.LightningModule,
