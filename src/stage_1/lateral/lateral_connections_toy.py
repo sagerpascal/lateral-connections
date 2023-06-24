@@ -158,7 +158,7 @@ class LateralLayer(nn.Module):
 
         for co in range(self.out_channels):
             for ci in range(self.in_channels):
-                if ci == co:
+                if ci == co or ci + 4 == co:
                     cii = ci * self.kernel_size[0] * self.kernel_size[1] + self.locality_size * self.kernel_size[
                         1] + self.locality_size
                     W_lateral[co, cii, 0, 0] = 1
@@ -202,7 +202,8 @@ class LateralLayer(nn.Module):
             #    print("updated_weights not diagonal")
 
             self.W_lateral.data += self.lr * update.view(self.W_lateral.shape)
-            self.W_lateral.data = self.W_lateral.data / (1e-10 + torch.sqrt(
+            self.W_lateral.data = torch.clip(self.W_lateral.data, 0., 1.)
+            self.W_lateral.data = self.W_lateral.data / (1e-10 + .2 * torch.sqrt(
                 torch.sum(self.W_lateral.data ** 2, dim=[1, 2, 3], keepdim=True)))  # Weight normalization
         else:
             raise NotImplementedError(f"Hebbian rule {self.hebbian_rule} not implemented.")
@@ -216,26 +217,29 @@ class LateralLayer(nn.Module):
             assert torch.all((x_rearranged == 0.) | (x_rearranged == 1.)), "x_rearranged not binary"
             x_lateral = F.conv2d(x_rearranged, self.W_lateral, padding="same")
 
-            # Normalize by dividing through the max. possible activation (if all weights were 1)
-            x_max_act = F.conv2d(x_rearranged, torch.ones_like(self.W_lateral.data), padding="same")
+            # reduce weight at a certain point if it is too high (Inhibition)
             min_support = self.kernel_size[0]
-            x_max_act = torch.where(x_max_act < min_support, min_support, x_max_act)
-            x_lateral_norm = x_lateral / x_max_act
+            max_support = 1.3 * self.kernel_size[0]
+            x_lateral_norm = torch.where(x_lateral < max_support, x_lateral, max_support - .5 * (x_lateral - max_support))
+
+            # Normalize by dividing through the max. possible activation (if all weights were 1)
+            # x_max_act = F.conv2d(x_rearranged, torch.ones_like(self.W_lateral.data), padding="same")
+            # x_max_act = torch.where(x_max_act < min_support, min_support, x_max_act)
+            # x_max_act = torch.where(x_max_act > max_support, max_support, x_max_act)
+            # x_lateral_norm = x_lateral / x_max_act
 
             # Normalize by dividing through the sum of the weights
             x_lateral_norm = x_lateral_norm / (1e-10 + torch.sum(self.W_lateral.data, dim=(1, 2, 3)).view(1, -1, 1, 1))
 
-            # reduce weight at a certain point if it is too high (Inhibition)
-            # x_lateral_norm = torch.where(10 * x_lateral_norm <= 1, 10 * x_lateral_norm, 1 - (x_lateral_norm * 10 - 1))
+            # if self.ts > 0:
+            #     x_lateral_norm = (x_lateral_norm + self.ts * self.x_lateral_norm_prev) / (self.ts + 1)
+            # self.x_lateral_norm_prev = x_lateral_norm
 
+            # Bring activation in range [0, 1]
             x_lateral_norm_s = x_lateral_norm.shape
             x_lateral_norm /= (
-                        1e-10 + x_lateral_norm.view(-1, x_lateral_norm_s[2] * x_lateral_norm_s[3]).max(1)[0].view(
-                    x_lateral_norm_s[:2] + (1, 1)))
-
-            if self.ts > 0:
-                x_lateral_norm = (x_lateral_norm + self.ts * self.x_lateral_norm_prev) / (self.ts + 1)
-            self.x_lateral_norm_prev = x_lateral_norm
+                    1e-10 + x_lateral_norm.view(-1, x_lateral_norm_s[2] * x_lateral_norm_s[3]).max(1)[0].view(
+                x_lateral_norm_s[:2] + (1, 1)))
 
             if self.act_threshold == "bernoulli":
                 x_lateral_bin = torch.bernoulli(torch.clip(x_lateral_norm ** 3, 0, 1))
@@ -244,8 +248,8 @@ class LateralLayer(nn.Module):
 
             # TODO:
             # if self.training and self.ts == 4:
-            if self.training:
-                self.hebbian_update(x_rearranged, x_lateral_bin)
+            # if self.training:
+            #     self.hebbian_update(x_rearranged, x_lateral_bin)
 
             stats = {
                 "l1/avg_support_active": x_lateral[x_lateral_bin > 0].mean().item(),
@@ -265,211 +269,7 @@ class LateralLayer(nn.Module):
 
             x_lateral /= x_lateral.view(-1, x_lateral_norm_s[2] * x_lateral_norm_s[3]).max(1)[0].view(
                 x_lateral_norm_s[:2] + (1, 1))
-            return torch.cat([x_lateral, x_lateral_norm], dim=1), x_lateral_bin, stats
-
-
-class LateralLayerEfficient(nn.Module):
-
-    def __init__(self,
-                 fabric: Fabric,
-                 in_channels: int,
-                 out_channels: int,
-                 locality_size: Optional[int] = 2,
-                 lr: Optional[float] = 0.0005,
-                 mask_out_bg: Optional[bool] = False,
-                 mov_avg_rate_prev_view: Optional[float] = 0.,
-                 mov_avg_rate_prev_time: Optional[float] = 0.,
-                 mov_avg_rate_prev: Optional[float] = 0.,
-                 hebbian_rule: Optional[HEBBIAN_ALGO] = 'instar',
-                 use_bias: Optional[bool] = True,
-                 k: Optional[int] = 1,
-                 thr_rate: Optional[float] = 0.05,
-                 target_rate: Optional[float] = None,
-                 w_init: Optional[W_INIT] = 'identity',
-                 ):
-        """
-        Lateral Layer trained with Hebbian Learning. The input and output of this layer are binary.
-        Source: https://github.com/ThomasMiconi/HebbianCNNPyTorch/tree/main
-
-        :param fabric: Fabric instance.
-        :param in_channels: Number of input channels.
-        :param out_channels: Number of output channels.
-        :param locality_size: Size of the locality, i.e. how many neurons are connected to each other. For
-        example, if locality_size = 2, then each neuron is connected to 5 neurons on each side of it.
-        :param lr: Learning rate.
-        :param mask_out_bg: Whether to mask out the background.
-        :param mov_avg_rate_prev_view: The rate of the previous view at the same timestep to use for moving average.
-        :param mov_avg_rate_prev_time: The rate of the previous timestep and the same view to use for moving average.
-        :param mov_avg_rate_prev: The rate of the previous activation to use for moving average.
-        :param hebbian_rule: Which Hebbian rule to use.
-        :param use_bias: Whether to use bias.
-        :param k: Number of active neurons per channel (k winner take all).
-        :param thr_rate: The threshold rate, defines how fast the bias adapts to data. Only relevant if `use_bias=True`
-        :param target_rate: The target rate of the neurons (how many should be activate), default is k/out_channels.
-                            Only relevant if `use_bias=True`
-        :param w_init: How to initialize the weights.
-        """
-        super().__init__()
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.locality_size = locality_size
-        self.neib_size = 2 * self.locality_size + 1
-        self.lr = lr
-        self.mask_out_bg = mask_out_bg
-        self.hebbian_rule = hebbian_rule
-        self.use_bias = use_bias
-        self.k = k
-        self.mov_avg_rate_prev_view = mov_avg_rate_prev_view
-        self.mov_avg_rate_prev_time = mov_avg_rate_prev_time
-        self.mov_avg_rate_prev = mov_avg_rate_prev
-        self.thr_rate = thr_rate
-        self.target_rate = self.k / self.out_channels if target_rate is None else target_rate
-
-        self.step = 0
-        self.ts = None
-        self.prev_activations = {}
-        self.prev_activation = None
-
-        if isinstance(self.target_rate, list):
-            self.target_rate = torch.tensor(self.target_rate, device=fabric.device).view(1, -1, 1, 1)
-
-        assert self.k <= self.out_channels, "k must be smaller than out_channels"
-        assert self.k > 0, "k must be greater than 0"
-
-        if self.mask_out_bg:
-            self.target_rate = self.target_rate / 10
-
-        weight_shape = (self.out_channels, self.in_channels, self.neib_size, self.neib_size)
-        if w_init == "random":
-            self.W = torch.randn(weight_shape, requires_grad=True, device=fabric.device)
-        elif w_init == "zeros":
-            self.W = torch.zeros(weight_shape, requires_grad=True, device=fabric.device)
-        elif w_init == "identity":
-            self.W = torch.zeros(weight_shape, device=fabric.device)
-            for oc in range(self.out_channels):
-                for ic in range(self.in_channels):
-                    if oc == ic:
-                        self.W[oc, ic, self.locality_size, self.locality_size] = 1
-            self.W.requires_grad = True
-
-        self.W.data = self.W.data / (1e-10 + torch.sqrt(torch.sum(self.W.data ** 2, dim=[1, 2, 3], keepdim=True)))
-        self.b = torch.zeros((1, self.out_channels, 1, 1), requires_grad=False).to(fabric.device)
-
-        self.W = nn.Parameter(self.W)
-        self.b = nn.Parameter(self.b)
-
-        self.optimizer = torch.optim.Adam([self.W, ], lr=self.lr)
-
-    def new_sample(self):
-        """
-        To be called when a new sample is fed into the network.
-        """
-        self.prev_activations = {}
-        self.prev_activation = None
-
-    def update_ts(self, ts):
-        """
-        Set the current timestep (relevant for sparsity rate)
-        :param ts: The current timestep
-        """
-        self.ts = ts
-
-    def update_k(self, k):
-        self.k = k
-        self.target_rate = self.k / self.out_channels
-        assert False, "Should this be called?"
-
-    def get_weights(self):
-        return self.W
-
-    def forward(self, x: Tensor) -> Tuple[Tensor, Tensor]:
-        self.optimizer.zero_grad()
-
-        prelimy = F.conv2d(x, self.W, padding="same")
-        prelimy = prelimy * (prelimy > 0.6)
-
-        # Then we compute the "real" output (y) of each cell, with winner-take-all competition
-        with torch.no_grad():
-            realy = (prelimy - self.b)
-
-            if self.mov_avg_rate_prev_view > 0 and self.ts in self.prev_activations:
-                realy = (1 - self.mov_avg_rate_prev_view) * realy + self.mov_avg_rate_prev_view * \
-                        self.prev_activations[self.ts]
-            if self.mov_avg_rate_prev_time > 0 and self.ts - 1 in self.prev_activations:
-                realy = (1 - self.mov_avg_rate_prev_time) * realy + self.mov_avg_rate_prev_time * \
-                        self.prev_activations[self.ts - 1]
-            if self.mov_avg_rate_prev and self.prev_activation is not None:
-                realy = (1 - self.mov_avg_rate_prev) * realy + self.mov_avg_rate_prev * self.prev_activation
-            self.prev_activation = realy.detach()
-            self.prev_activations[self.ts] = realy.detach()
-
-            # TODO: In order that the channels have more distinct features, we could limit the number of activations
-            #  per channel to 1.5x the input activations of the same channel?
-            # TODO: We could use different Filters, e.g. some layers can access only some input filters (number of
-            #  combinations: 2^in_channels)
-
-            internal_activations = realy.detach()
-
-            # # k winner take all
-            # smallest_value_per_channel = torch.amin(realy, dim=(2, 3)) + 0.0001
-            # tk = torch.topk(realy.data, self.k, dim=1, largest=True)[0]
-            # realy.data[realy.data < tk.data[:, -1, :, :][:, None, :, :]] = 0
-            # if self.mask_out_bg:
-            #     realy.data[realy.data <= smallest_value_per_channel.view(
-            #         smallest_value_per_channel.shape + (1, 1))] = 0  # mask out background...
-            #
-            # realy.data = (realy.data > 0.).float()
-
-            realy.data = (realy.data > 0.6).float()  # torch.bernoulli(realy.data)
-
-            # Adaptive Threshold
-            # if self.step <= 100_000:
-            #     ratio = max((100_000 - self.step) / 100_000, 0)
-            #     realy.data = ((x[:, :x.shape[1] // 2, ...] * ratio + realy.data * (1 - ratio)) > 0.5).float()
-        #
-        #     realy.data = (realy.data > 0.).float()
-
-        # # binary output
-        # threshold = (torch.sort(realy.view(realy.shape[0], -1), dim=1, descending=True)[0][:,
-        #              int(realy.numel() / realy.shape[0] / realy.shape[1] * 0.2)])
-        #
-        # realy.data = (realy.data > threshold.view(realy.shape[0], 1, 1, 1)).float()
-
-        # Then we compute the surrogate output yforgrad, whose gradient computations produce the desired Hebbian output
-        # Note: We must not include thresholds here, as this would not produce the expected gradient expressions. The
-        # actual values will come from realy, which does include thresholding.
-        if self.hebbian_rule == "instar":
-            yforgrad = prelimy - 1 / 2 * torch.sum(self.W * self.W, dim=(1, 2, 3))[None, :, None,
-                                         None]  # Instar rule, dw ~= y(x-w)
-        elif self.hebbian_rule == "oja":
-            yforgrad = prelimy - 1 / 2 * torch.sum(self.W * self.W, dim=(1, 2, 3))[None, :, None,
-                                         None] * realy.data  # Oja's rule, dw ~= y(x-yw)
-        elif self.hebbian_rule == "vanilla":
-            yforgrad = prelimy
-        else:
-            assert False, "Unknown hebbian rule"
-
-        yforgrad.data = realy.data  # We force the value of yforgrad to be the "correct" y
-
-        loss = torch.sum(-1 / 2 * yforgrad * yforgrad)
-        if self.training:
-            loss.backward()
-            if self.step > 100:  # No weight modifications before batch 100 (burn-in) or after learning
-                # epochs (during data accumulation for training / testing)
-                self.optimizer.step()
-                self.W.data = self.W.data / (1e-10 + torch.sqrt(
-                    torch.sum(self.W.data ** 2, dim=[1, 2, 3], keepdim=True)))  # Weight normalization
-
-        if self.use_bias:
-            with torch.no_grad():
-                # Threshold adaptation is based on realy, i.e. the one used for plasticity. Always binarized (firing vs.
-                # not firing).
-                self.b += self.thr_rate * (
-                        torch.mean((realy.data > 0).float(), dim=(0, 2, 3))[None, :, None, None] - self.target_rate)
-
-        self.step += 1
-        return internal_activations, realy.detach()
-
+            return x_lateral_norm, x_lateral_bin, stats
 
 class LateralLayerEfficientNetwork1L(nn.Module):
     """
@@ -495,9 +295,7 @@ class LateralLayerEfficientNetwork1L(nn.Module):
             self.in_channels += 1
             self.out_channels += 1
 
-        if lm_conf["l1_type"] == "lateral_efficient":
-            l1_t = LateralLayerEfficient
-        elif lm_conf["l1_type"] == "lateral_flex":
+        if lm_conf["l1_type"] == "lateral_flex":
             l1_t = LateralLayer
         else:
             assert False, "Unknown lateral layer type"
@@ -533,37 +331,6 @@ class LateralLayerEfficientNetwork1L(nn.Module):
                 self.avg_value_meter[k] = AverageMeter()
             self.avg_value_meter[k](v, weight=x.shape[0])
         return act, act_bin
-
-        # # TODO: Move this loop into s1_toy_example
-        # self.new_sample()
-        # z = None
-
-    #
-    # input_features, lateral_features, lateral_features_f = [], [], []
-    # for view_idx in range(x.shape[1]):
-    #     # prepare input view
-    #     x_view = x[:, view_idx, ...]
-    #     x_view = torch.where(x_view > 0., 1., 0.)
-    #     input_features.append(x_view)
-    #
-    #     if z is None:
-    #         z = torch.zeros((x_view.shape[0], self.l1.out_channels, x_view.shape[2], x_view.shape[3]),
-    #                         device=x.device)
-    #
-    #     t = 0
-    #     features, features_float = [], []
-    #     for t in range(self.conf["lateral_model"]["max_timesteps"]):
-    #         self.l1.update_ts(t)
-    #         x_in = torch.cat([x_view, z], dim=1)
-    #         z_float, z = self.l1(x_in)
-    #         features.append(z)
-    #         features_float.append(z_float)
-    #
-    #     lateral_features.append(torch.stack(features, dim=1))
-    #     lateral_features_f.append(torch.stack(features_float, dim=1))
-    #
-    # return torch.stack(input_features, dim=1), torch.stack(lateral_features, dim=1), torch.stack(lateral_features_f,
-    #                                                                                             dim=1)
 
     def get_model_weight_stats(self) -> Dict[str, float]:
         """

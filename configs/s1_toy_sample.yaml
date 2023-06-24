@@ -2,7 +2,7 @@ dataset:
   name: straightline
   augmentation: None
   loader: torch
-  batch_size: 128
+  batch_size: 228
   num_workers: 0
 
 run:
@@ -28,7 +28,7 @@ optimizers:
   l2_opt:
     type: Adam
     params:
-      lr: 0.001
+      lr: 0.05
       betas: [ 0.9, 0.999 ]
       eps: 0.00000001
       weight_decay: 0
@@ -64,25 +64,13 @@ feature_extractor:
 
 lateral_model:
   channels: 4
-  max_timesteps: 5  # 1 = only one forward pass without recurrent connection
-  # l1_type: 'lateral_efficient'
-  # l1_params:
-  #   locality_size: 2
-  #   lr: 0.00005
-  #   mask_out_bg: False
-  #   mov_avg_rate_prev_view: 0.
-  #   mov_avg_rate_prev_time: 0.5
-  #   mov_avg_rate_prev: 0.
-  #   hebbian_rule: 'instar'
-  #   use_bias: False
-  #   k: 4  # 1=WTA, 4 = No WTA (without BG Channel), 5= NO WTA (with BG Channel)
-  #   thr_rate: 0.05
-  #   target_rate: null # [0.05, 0.05, 0.05, 0.05, 0.8]
-  #   w_init: 'identity'
+  max_timesteps: 6  # 1 = only one forward pass without recurrent connection
+  min_k: 2
+  max_k: 3
   l1_type: 'lateral_flex'
   l1_params:
-    locality_size: 3
-    lr: 0.005
+    locality_size: 5
+    lr: 0.2
     hebbian_rule: 'vanilla'
     neg_corr: False
-    act_threshold: 0.7
+    act_threshold: 'bernoulli'  # 0.5

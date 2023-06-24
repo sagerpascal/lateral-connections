@@ -11,6 +11,7 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+import torch.nn.functional as F
 
 from data import loaders_from_config
 from stage_1.feature_extractor.straight_line_pl_modules import FixedFilterFeatureExtractor
@@ -195,7 +196,7 @@ def cycle(
     lateral_network.new_sample()
     z = None
 
-    input_features, lateral_features, lateral_features_f, l2_features = [], [], [], []
+    input_features, lateral_features, lateral_features_f, l2_features, l2h_features = [], [], [], [], []
     for view_idx in range(features.shape[1]):
         x_view_features = features[:, view_idx, ...]
         x_view_features = feature_extractor.binarize_features(x_view_features)
@@ -206,36 +207,57 @@ def cycle(
             z = torch.zeros((x_view_features.shape[0], lateral_network.model.out_channels, x_view_features.shape[2],
                              x_view_features.shape[3]), device=batch.device)
 
-        features_lat, features_lat_float, features_l2 = [], [], []
+        features_lat, features_lat_float, features_l2, features_l2_h = [], [], [], []
         for t in range(config["lateral_model"]["max_timesteps"]):
             lateral_network.model.update_ts(t)
             x_in = torch.cat([x_view_features, z], dim=1)
             z_float, z = lateral_network(x_in)
 
-            if mode == "train":
-                l2_opt.zero_grad()
-                z2, z2_feedback, h, loss = l2.train_step(z, batch, batch_idx)
-                fabric.backward(loss)
-                l2_opt.step()
-            else:
-                z2, z2_feedback, h, loss = l2.eval_step(z, batch, batch_idx)
+            z2, z2_feedback, h, loss = l2.eval_step(z)
 
-            if epoch > 10:
+            if epoch > 3: #F.mse_loss(z, z2_feedback) < .05:
                 z = z2_feedback
 
+            features_lat.append(z)
             if store_tensors:
-                features_lat.append(z)
                 features_lat_float.append(z_float)
-                features_l2.append(torch.cat([z2_feedback, h], dim=1))
+                features_l2.append(z2_feedback)
+                features_l2_h.append(h)
+
+        features_lat = torch.stack(features_lat, dim=1)
+        features_lat_median = torch.median(features_lat, dim=1)[0]
+        if store_tensors:
+            features_lat_float = torch.stack(features_lat_float, dim=1)
+            features_l2 = torch.stack(features_l2, dim=1)
+            features_l2_h = torch.stack(features_l2_h, dim=1)
+
+        if mode == "train":  # TODO: Train at the end after all timesteps (use median activation per cell),
+            # also update L1 after training
+            # Train L1
+            x_rearranged = lateral_network.model.l1.rearrange_input(
+                torch.cat([x_view_features, features_lat_median], dim=1))
+            lateral_network.model.l1.hebbian_update(x_rearranged, features_lat_median)
+
+            # Train L2
+            l2_opt.zero_grad()
+            z2, z2_feedback, h, loss = l2.train_step(features_lat_median)
+            fabric.backward(loss)
+            l2_opt.step()
 
         if store_tensors:
-            lateral_features.append(torch.stack(features_lat, dim=1))
-            lateral_features_f.append(torch.stack(features_lat_float, dim=1))
-            l2_features.append(torch.stack(features_l2, dim=1))
+            features_lat_float_median = torch.median(features_lat_float, dim=1)[0]
+            features_l2_median = torch.median(features_l2, dim=1)[0]
+            features_lat = torch.cat([features_lat, features_lat_median.unsqueeze(1)], dim=1)
+            features_lat_float = torch.cat([features_lat_float, features_lat_float_median.unsqueeze(1)], dim=1)
+            features_l2 = torch.cat([features_l2, features_l2_median.unsqueeze(1)], dim=1)
+            lateral_features.append(features_lat)
+            lateral_features_f.append(features_lat_float)
+            l2_features.append(features_l2)
+            l2h_features.append(features_l2_h)
 
     if store_tensors:
         return features, torch.stack(input_features, dim=1), torch.stack(lateral_features, dim=1), torch.stack(
-            lateral_features_f, dim=1), torch.stack(l2_features, dim=1)
+            lateral_features_f, dim=1), torch.stack(l2_features, dim=1), torch.stack(l2h_features, dim=1)
 
 
 def single_train_epoch(
@@ -266,7 +288,8 @@ def single_train_epoch(
                          total=len(train_loader),
                          colour="GREEN",
                          desc=f"Train Epoch {epoch}/{config['run']['n_epochs']}"):
-        cycle(config, feature_extractor, lateral_network, l2, batch[0], i, epoch=epoch, store_tensors=False, mode="train",
+        cycle(config, feature_extractor, lateral_network, l2, batch[0], i, epoch=epoch, store_tensors=False,
+              mode="train",
               fabric=fabric, l2_opt=l2_opt)
 
 
@@ -297,13 +320,15 @@ def single_eval_epoch(
                          colour="GREEN",
                          desc=f"Testing Epoch {epoch}/{config['run']['n_epochs']}"):
         with torch.no_grad():
-            features, input_features, lateral_features, lateral_features_f, l2_features = cycle(config,
-                                                                                                feature_extractor,
-                                                                                                lateral_network, l2,
-                                                                                                batch[0], i,
-                                                                                                epoch=epoch,
-                                                                                                store_tensors=True,
-                                                                                                mode="eval")
+            features, input_features, lateral_features, lateral_features_f, l2_features, l2_h_features = cycle(config,
+                                                                                                               feature_extractor,
+                                                                                                               lateral_network,
+                                                                                                               l2,
+                                                                                                               batch[0],
+                                                                                                               i,
+                                                                                                               epoch=epoch,
+                                                                                                               store_tensors=True,
+                                                                                                               mode="eval")
             plt_img.append(batch[0])
             plt_features.append(features)
             plt_input_features.append(input_features)
@@ -368,9 +393,10 @@ def train(
     """
     start_epoch = config['run']['current_epoch']
 
-    if config['logging']['wandb']['active'] or config['run']['plots']['enable']:
-        single_eval_epoch(config, feature_extractor, lateral_network, l2, test_loader, 0)
-        lateral_network.on_epoch_end()  # print logs
+    # if config['logging']['wandb']['active'] or config['run']['plots']['enable']:
+    #     lateral_network.update_k(config['lateral_model']['max_k'])
+    #     single_eval_epoch(config, feature_extractor, lateral_network, l2, test_loader, 0)
+    #     lateral_network.on_epoch_end()  # print logs
 
     for epoch in range(start_epoch, config['run']['n_epochs']):
         single_train_epoch(config, feature_extractor, lateral_network, l2, train_loader, epoch + 1, fabric, l2_opt)
@@ -420,18 +446,20 @@ def main():
         config, state = load_run(config, fabric)
         feature_extractor.load_state_dict(state['feature_extractor'])
         lateral_network.load_state_dict(state['lateral_network'])
-        #l2.load_state_dict(state['l2'])
-        #l2_opt.load_state_dict(state['l2_opt'])
-        #l2_sched.load_state_dict(state['l2_sched'])
+        # l2.load_state_dict(state['l2'])
+        # l2_opt.load_state_dict(state['l2_opt'])
+        # l2_sched.load_state_dict(state['l2_sched'])
 
     feature_extractor.eval()  # does not have to be trained
-    if 'store_path' in config['run']['plots'] and config['run']['plots']['store_path'] is not None and config['run']['plots']['store_path'] != 'None':
+    if 'store_path' in config['run']['plots'] and config['run']['plots']['store_path'] is not None and \
+            config['run']['plots']['store_path'] != 'None':
         fp = Path(config['run']['plots']['store_path'])
         if not fp.exists():
             fp.mkdir(parents=True, exist_ok=True)
     train(config, feature_extractor, lateral_network, l2, train_loader, test_loader, fabric, l2_opt, l2_sched)
 
-    if 'store_state_path' in config['run'] and config['run']['store_state_path'] is not None and config['run']['store_state_path'] != 'None':
+    if 'store_state_path' in config['run'] and config['run']['store_state_path'] is not None and config['run'][
+        'store_state_path'] != 'None':
         save_run(config, fabric,
                  components={'feature_extractor': feature_extractor, 'lateral_network': lateral_network, 'l2': l2,
                              'l2_opt': l2_opt, 'l2_sched': l2_sched.state_dict()})
