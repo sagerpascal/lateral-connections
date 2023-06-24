@@ -53,70 +53,17 @@ class RBM(nn.Module):
         h_term = torch.sum(F.softplus(w_x_h), dim=1)
         return torch.mean(-h_term - v_term)
 
-    def forward(self, v, prototype):
+    def forward(self, v):
         """
         Compute the real and generated examples.
         """
         v = v.flatten(1)
-        prototype = prototype.flatten(1)
         h, ph = self.visible_to_hidden(v)
         for _ in range(self.k):
             v_gibb, pv = self.hidden_to_visible(h)
             h, ph = self.visible_to_hidden(v_gibb)
         return v, v_gibb, torch.cat([h, ph], dim=1).view(-1, 1, 1, 32).repeat(1, 1, 32, 1)
 
-class RBM2(nn.Module):
-    def __init__(self, n_visible=4 * 32 * 32, n_hidden=1 * 32 * 32, k=5):
-        """Create a RBM."""
-        super(RBM2, self).__init__()
-        self.v = nn.Parameter(torch.randn(1, n_visible))
-        self.h = nn.Parameter(torch.randn(1, n_hidden))
-        self.W = nn.Parameter(torch.randn(n_hidden, n_visible))
-        self.k = k
-
-    def visible_to_hidden(self, v):
-        """
-         sampling a hidden variable given a visible variable.
-        """
-        p = torch.sigmoid(F.linear(v, self.W, self.h))
-        return p.bernoulli(), p
-
-    def hidden_to_visible(self, h):
-        """
-        Conditional sampling a visible variable given a hidden variable.
-        """
-        p = torch.sigmoid(F.linear(h, self.W.t(), self.v))
-        return p.bernoulli(), p
-
-    def free_energy_visible(self, v):
-        """
-        Free energy function.
-
-        .. math::
-            \begin{align}
-                F(x) &= -\log \sum_h \exp (-E(x, h)) \\
-                &= -a^\top x - \sum_j \log (1 + \exp(W^{\top}_jx + b_j))\,.
-            \end{align}
-        """
-        v_term = torch.matmul(v, self.v.t())
-        w_x_h = F.linear(v, self.W, self.h)
-        h_term = torch.sum(F.softplus(w_x_h), dim=1)
-        return torch.mean(-h_term - v_term)
-
-    def free_energy_hidden(self, h):
-        h_term = torch.matmul(h, self.h.t())
-        w_x_h = F.linear(h, self.W.t(), self.v)  # TODO: Maybe there is no inverse -> 2x W? what happens with functions above that use W.t()?
-        v_term = torch.sum(F.softplus(w_x_h), dim=1)
-        return torch.mean(-v_term - h_term)
-
-    def forward(self, z, prototype):
-        z = z.flatten(1)  # Visible Target
-        pt = prototype.flatten(1)  # Hidden Target
-        for _ in range(self.k):
-            pt2, ppt2 = self.visible_to_hidden(z)  # Visible prediction
-            z, pz = self.hidden_to_visible(pt2)
-
-        return pt, pt2, ppt2.reshape(-1, 1, 32, 32)
 
 class L2RBM(BaseLitModule):
     """
@@ -132,29 +79,28 @@ class L2RBM(BaseLitModule):
         super().__init__(conf, fabric, logging_prefixes=["l2/train", "l2/val"])
         self.model = self.configure_model()
 
-    def forward(self, x: Tensor, y: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         """
         Forward pass through the model.
         :param x: Input tensor.
-        :param y: Target tensor / prototype tensor.
         """
-        return self.model(x, y)
+        return self.model(x)
 
-    def step(self, x: Tensor, y: Tensor, batch_idx: int, log_prefix: str) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+    def step(self, x: Tensor, log_prefix: str) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
         # pt, pt2, h = self.forward(x, y)
         # loss = self.model.free_energy_hidden(pt) - self.model.free_energy_hidden(pt2)
-        v, v_gibb, h = self.forward(x, y)
+        v, v_gibb, h = self.forward(x)
         loss = self.model.free_energy(v) - self.model.free_energy(v_gibb)
         v = v.reshape(-1, 4, 32, 32)
         v_gibb = v_gibb.reshape(-1, 4, 32, 32)
-        self.log_step(processed_values={"loss": loss}, prefix=log_prefix)
+        self.log_step(processed_values={"loss": loss}, metric_pairs=[(v, v_gibb)], prefix=log_prefix)
         return v, v_gibb, h, loss
 
-    def train_step(self, x: Tensor, y: Tensor, batch_idx: int) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
-        return self.step(x, y, batch_idx, "l2/train")
+    def train_step(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+        return self.step(x, "l2/train")
 
-    def eval_step(self, x: Tensor, y: Tensor, batch_idx: int) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
-        return self.step(x, y, batch_idx, "l2/val")
+    def eval_step(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+        return self.step(x, "l2/val")
 
     def configure_model(self) -> nn.Module:
         """

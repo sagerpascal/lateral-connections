@@ -76,7 +76,7 @@ straightline:
     split: "train"
     vertical_horizontal_only: True
     aug_range: 0
-    num_images: 20000
+    num_images: 6000
     num_aug_versions: 0
   valid_dataset_params:
     split: "val"
