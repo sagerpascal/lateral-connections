@@ -158,7 +158,7 @@ class LateralLayer(nn.Module):
 
         for co in range(self.out_channels):
             for ci in range(self.in_channels):
-                if ci == co:
+                if ci == co or ci + 4 == co:
                     cii = ci * self.kernel_size[0] * self.kernel_size[1] + self.locality_size * self.kernel_size[
                         1] + self.locality_size
                     W_lateral[co, cii, 0, 0] = 1
@@ -202,7 +202,8 @@ class LateralLayer(nn.Module):
             #    print("updated_weights not diagonal")
 
             self.W_lateral.data += self.lr * update.view(self.W_lateral.shape)
-            self.W_lateral.data = self.W_lateral.data / (1e-10 + torch.sqrt(
+            self.W_lateral.data = torch.clip(self.W_lateral.data, 0., 1.)
+            self.W_lateral.data = self.W_lateral.data / (1e-10 + .2 * torch.sqrt(
                 torch.sum(self.W_lateral.data ** 2, dim=[1, 2, 3], keepdim=True)))  # Weight normalization
         else:
             raise NotImplementedError(f"Hebbian rule {self.hebbian_rule} not implemented.")
@@ -216,26 +217,29 @@ class LateralLayer(nn.Module):
             assert torch.all((x_rearranged == 0.) | (x_rearranged == 1.)), "x_rearranged not binary"
             x_lateral = F.conv2d(x_rearranged, self.W_lateral, padding="same")
 
-            # Normalize by dividing through the max. possible activation (if all weights were 1)
-            x_max_act = F.conv2d(x_rearranged, torch.ones_like(self.W_lateral.data), padding="same")
+            # reduce weight at a certain point if it is too high (Inhibition)
             min_support = self.kernel_size[0]
-            x_max_act = torch.where(x_max_act < min_support, min_support, x_max_act)
-            x_lateral_norm = x_lateral / x_max_act
+            max_support = 1.3 * self.kernel_size[0]
+            x_lateral_norm = torch.where(x_lateral < max_support, x_lateral, max_support - (x_lateral - max_support))
+
+            # Normalize by dividing through the max. possible activation (if all weights were 1)
+            # x_max_act = F.conv2d(x_rearranged, torch.ones_like(self.W_lateral.data), padding="same")
+            # x_max_act = torch.where(x_max_act < min_support, min_support, x_max_act)
+            # x_max_act = torch.where(x_max_act > max_support, max_support, x_max_act)
+            # x_lateral_norm = x_lateral / x_max_act
 
             # Normalize by dividing through the sum of the weights
             x_lateral_norm = x_lateral_norm / (1e-10 + torch.sum(self.W_lateral.data, dim=(1, 2, 3)).view(1, -1, 1, 1))
 
-            # reduce weight at a certain point if it is too high (Inhibition)
-            # x_lateral_norm = torch.where(10 * x_lateral_norm <= 1, 10 * x_lateral_norm, 1 - (x_lateral_norm * 10 - 1))
+            # if self.ts > 0:
+            #     x_lateral_norm = (x_lateral_norm + self.ts * self.x_lateral_norm_prev) / (self.ts + 1)
+            # self.x_lateral_norm_prev = x_lateral_norm
 
+            # Bring activation in range [0, 1]
             x_lateral_norm_s = x_lateral_norm.shape
             x_lateral_norm /= (
-                        1e-10 + x_lateral_norm.view(-1, x_lateral_norm_s[2] * x_lateral_norm_s[3]).max(1)[0].view(
-                    x_lateral_norm_s[:2] + (1, 1)))
-
-            if self.ts > 0:
-                x_lateral_norm = (x_lateral_norm + self.ts * self.x_lateral_norm_prev) / (self.ts + 1)
-            self.x_lateral_norm_prev = x_lateral_norm
+                    1e-10 + x_lateral_norm.view(-1, x_lateral_norm_s[2] * x_lateral_norm_s[3]).max(1)[0].view(
+                x_lateral_norm_s[:2] + (1, 1)))
 
             if self.act_threshold == "bernoulli":
                 x_lateral_bin = torch.bernoulli(torch.clip(x_lateral_norm ** 3, 0, 1))

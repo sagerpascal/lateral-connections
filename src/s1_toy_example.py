@@ -212,18 +212,18 @@ def cycle(
             x_in = torch.cat([x_view_features, z], dim=1)
             z_float, z = lateral_network(x_in)
 
-            if mode == "train":
+            if mode == "train": # TODO: Train at the end after all timesteps (use media activation per cell), also update L1 after training
                 l2_opt.zero_grad()
                 z2, z2_feedback, h, loss = l2.train_step(z, batch, batch_idx)
                 fabric.backward(loss)
                 l2_opt.step()
-            else:
+            else: # TODO: In every timesteps
                 z2, z2_feedback, h, loss = l2.eval_step(z, batch, batch_idx)
 
-            if epoch > 10:
+            if epoch > 10: # TODO: Only if meaningful (i.e. some distance measure is fulfiled), otherwise ignore
                 z = z2_feedback
 
-            if store_tensors:
+            if store_tensors: # TODO: Also store median at the end
                 features_lat.append(z)
                 features_lat_float.append(z_float)
                 features_l2.append(torch.cat([z2_feedback, h], dim=1))
@@ -368,9 +368,9 @@ def train(
     """
     start_epoch = config['run']['current_epoch']
 
-    if config['logging']['wandb']['active'] or config['run']['plots']['enable']:
-        single_eval_epoch(config, feature_extractor, lateral_network, l2, test_loader, 0)
-        lateral_network.on_epoch_end()  # print logs
+    # if config['logging']['wandb']['active'] or config['run']['plots']['enable']:
+    #     single_eval_epoch(config, feature_extractor, lateral_network, l2, test_loader, 0)
+    #     lateral_network.on_epoch_end()  # print logs
 
     for epoch in range(start_epoch, config['run']['n_epochs']):
         single_train_epoch(config, feature_extractor, lateral_network, l2, train_loader, epoch + 1, fabric, l2_opt)
