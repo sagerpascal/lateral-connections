@@ -1,6 +1,7 @@
 import random
 import warnings
-from typing import Any, Dict, Generator, Iterator, List, Optional, Tuple
+from pathlib import Path
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import cv2
 import lightning.pytorch as pl
@@ -213,7 +214,7 @@ def get_strategy(config: Dict[str, Any]) -> Dict[str, Any]:
     :param config: Configuration of the demo, describing the strategy
     :return: The strategy
     """
-    strategy = {"noise": [0.0], "black": [0], "line": [((2, 15), (30, 15))]}
+    strategy = {"noise": [0.0], "black": [0], "line": [((2, 16), (30, 16))]}
     for cycle in range(config["n_cycles"]):
         if random.random() <= config["noise"]["probability"]:
             noise = random.uniform(config["noise"]["min"], config["noise"]["max"])
@@ -347,16 +348,19 @@ def predict_sample(
     """
     with torch.no_grad():
         batch = batch[0].to(fabric.device)
-        features, input_features, lateral_features, lateral_features_f, l2_features = cycle(config,
-                                                                                            feature_extractor,
-                                                                                            lateral_network, l2,
-                                                                                            batch,
-                                                                                            batch_idx,
-                                                                                            epoch=1,
-                                                                                            # no lateral feedback
-                                                                                            store_tensors=True,
-                                                                                            mode="eval")
-    return input_features, lateral_features, l2_features
+        features, input_features, lateral_features, lateral_features_f, l2_features, l2_h_features = cycle(config,
+                                                                                                           feature_extractor,
+                                                                                                           lateral_network,
+                                                                                                           l2,
+                                                                                                           batch,
+                                                                                                           batch_idx,
+                                                                                                           epoch=1,
+                                                                                                           # no
+                                                                                                           # lateral
+                                                                                                           # feedback
+                                                                                                           store_tensors=True,
+                                                                                                           mode="eval")
+    return input_features, lateral_features, l2_features, l2_h_features
 
 
 def process_data(
@@ -366,7 +370,7 @@ def process_data(
         feature_extractor: pl.LightningModule,
         lateral_network: pl.LightningModule,
         l2: pl.LightningModule,
-        video_fp: str = '../tmp/demo/output.mp4',
+        video_fp: str = '../tmp/demo/output_0-5.mp4',
 ):
     """
     Processes the data and store the network activations as video
@@ -379,15 +383,18 @@ def process_data(
     :param video_fp: Video file path
     """
     fps = 10.
+    frames_last = int(fps // 2)  # show the median activation for a longer time...
     ci = CustomImage()
     out = cv2.VideoWriter(video_fp, cv2.VideoWriter_fourcc(*'mp4v'), fps, (ci.width, ci.height))
     for i, img in tqdm(enumerate(generator), total=config_demo["n_cycles"] + 1):
-        inp_features, l1_act, l2_act = predict_sample(config, fabric, feature_extractor, lateral_network, l2, img,
-                                                      i)
+        inp_features, l1_act, l2_act, l2_h_act = predict_sample(config, fabric, feature_extractor, lateral_network, l2,
+                                                                img, i)
         for view in range(img[0].shape[1]):
-            for timestep in range(l1_act.shape[2]):
+            for timestep in range(l1_act.shape[2] + frames_last):
+                if timestep >= l1_act.shape[2]:
+                    timestep = l1_act.shape[2] - 1
                 result = ci.create_image(img[0][0, view], inp_features[0, view], l1_act[0, view, timestep],
-                                         l2_act[0, view, timestep, :-1], l2_act[0, view, timestep, -1, 0, :16])
+                                         l2_act[0, view, timestep], l2_h_act[0, view, timestep, :, 0, :16].squeeze())
                 out.write(cv2.cvtColor(result, cv2.COLOR_RGB2BGR))
     out.release()
 
@@ -400,7 +407,8 @@ def main():
                 title="Demo Lines: Creating a Video of a Changing Line")
     config, fabric, feature_extractor, lateral_network, l2 = load_models()
     generator = load_data_generator()
-    process_data(generator, config, fabric, feature_extractor, lateral_network, l2)
+    process_data(generator, config, fabric, feature_extractor, lateral_network, l2,
+                 video_fp=f"../tmp/demo/{Path(config['run']['load_state_path']).name}.mp4")
 
 
 if __name__ == "__main__":
