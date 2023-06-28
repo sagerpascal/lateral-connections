@@ -75,9 +75,9 @@ class StraightLine(Dataset):
         """
         # TODO: Delete this (always the same 2 lines)
         if idx % 4 == 0:
-            return (2, 15), (30, 15)
+            return (2, 16), (30, 16)
         elif idx % 4 == 1:
-            return (15, 2), (15, 30)
+            return (16, 2), (16, 30)
         elif idx % 4 == 2:
             return (2, 2), (30, 30)
         elif idx % 4 == 3:

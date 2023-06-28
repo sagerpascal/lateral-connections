@@ -1,6 +1,6 @@
 import argparse
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 import lightning.pytorch as pl
 import torch
@@ -11,7 +11,6 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-import torch.nn.functional as F
 
 from data import loaders_from_config
 from stage_1.feature_extractor.straight_line_pl_modules import FixedFilterFeatureExtractor
@@ -247,9 +246,11 @@ def cycle(
         if store_tensors:
             features_lat_float_median = torch.median(features_lat_float, dim=1)[0]
             features_l2_median = torch.median(features_l2, dim=1)[0]
+            l2h_features_median = torch.median(features_l2_h, dim=1)[0]
             features_lat = torch.cat([features_lat, features_lat_median.unsqueeze(1)], dim=1)
             features_lat_float = torch.cat([features_lat_float, features_lat_float_median.unsqueeze(1)], dim=1)
             features_l2 = torch.cat([features_l2, features_l2_median.unsqueeze(1)], dim=1)
+            features_l2_h = torch.cat([features_l2_h, l2h_features_median.unsqueeze(1)], dim=1)
             lateral_features.append(features_lat)
             lateral_features_f.append(features_lat_float)
             l2_features.append(features_l2)
@@ -446,9 +447,9 @@ def main():
         config, state = load_run(config, fabric)
         feature_extractor.load_state_dict(state['feature_extractor'])
         lateral_network.load_state_dict(state['lateral_network'])
-        # l2.load_state_dict(state['l2'])
-        # l2_opt.load_state_dict(state['l2_opt'])
-        # l2_sched.load_state_dict(state['l2_sched'])
+        l2.load_state_dict(state['l2'])
+        l2_opt.load_state_dict(state['l2_opt'])
+        l2_sched.load_state_dict(state['l2_sched'])
 
     feature_extractor.eval()  # does not have to be trained
     if 'store_path' in config['run']['plots'] and config['run']['plots']['store_path'] is not None and \
