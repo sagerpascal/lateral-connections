@@ -214,7 +214,7 @@ def cycle(
 
             z2, z2_feedback, h, loss = l2.eval_step(z)
 
-            if epoch > 3: #F.mse_loss(z, z2_feedback) < .05:
+            if epoch > 4:  #F.mse_loss(z, z2_feedback) < .05:
                 z = z2_feedback
 
             features_lat.append(z)
