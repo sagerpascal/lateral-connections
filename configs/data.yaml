@@ -76,14 +76,14 @@ straightline:
     split: "train"
     vertical_horizontal_only: True
     aug_range: 0
-    num_images: 6000
+    num_images: 600
     num_aug_versions: 0
   valid_dataset_params:
     split: "val"
     vertical_horizontal_only: True
     aug_range: 0
     fixed_lines_eval_test: True
-    num_images: 12
+    num_images: 4
     num_aug_versions: 0
     noise: 0.0
   test_dataset_params:
@@ -91,7 +91,7 @@ straightline:
     vertical_horizontal_only: True
     aug_range: 0
     fixed_lines_eval_test: True
-    num_images: 12
+    num_images: 4
     num_aug_versions: 0
     noise: 0.0
 
