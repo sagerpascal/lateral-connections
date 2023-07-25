@@ -10,7 +10,7 @@ import torchvision
 from lightning.fabric import Fabric
 from torch import Tensor
 from torch.optim import Optimizer
-from torch.optim.lr_scheduler import LRScheduler
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from data import plot_images, undo_norm_from_conf
 from data.utils.patches2d import Patches2D
@@ -157,7 +157,7 @@ class VQVAEFeatureExtractorPatchMode(BaseLitModule):
             padding_value=padding_value
         )
 
-    def configure_optimizers(self) -> Tuple[Optimizer, Optional[LRScheduler]]:
+    def configure_optimizers(self) -> Tuple[Optimizer, Optional[ReduceLROnPlateau]]:
         """
         Configure (create instance) the optimizer.
         :return: A torch optimizer.
@@ -290,7 +290,7 @@ class VQVAEFeatureExtractorImageMode(BaseLitModule):
         else:
             raise NotImplementedError(f"Model {model_conf['type']} not implemented")
 
-    def configure_optimizers(self) -> Tuple[Optimizer, Optional[LRScheduler]]:
+    def configure_optimizers(self) -> Tuple[Optimizer, Optional[ReduceLROnPlateau]]:
         """
         Configure (create instance) the optimizer.
         :return: A torch optimizer and scheduler.

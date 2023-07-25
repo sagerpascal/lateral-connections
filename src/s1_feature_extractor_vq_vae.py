@@ -7,7 +7,7 @@ import pytz
 import torch
 from lightning.fabric import Fabric
 from torch.optim import Optimizer
-from torch.optim.lr_scheduler import LRScheduler
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -115,7 +115,7 @@ def setup_fabric(config: Optional[Dict[str, Optional[Any]]] = None) -> Fabric:
 
 
 def setup_components(config: Dict[str, Optional[Any]], fabric: Fabric) -> (
-        BaseLitModule, Optimizer, Optional[LRScheduler]):
+        BaseLitModule, Optimizer, Optional[ReduceLROnPlateau]):
     """
     Setup components for training.
     :param config: Configuration dict
@@ -160,7 +160,7 @@ def configure() -> Dict[str, Optional[Any]]:
     return config
 
 
-def setup_modules(config: Dict[str, Optional[Any]]) -> Tuple[Fabric, BaseLitModule, Optimizer, Optional[LRScheduler],
+def setup_modules(config: Dict[str, Optional[Any]]) -> Tuple[Fabric, BaseLitModule, Optimizer, Optional[ReduceLROnPlateau],
 DataLoader, DataLoader]:
     """
     Setup the modules for training.
@@ -239,7 +239,7 @@ def train_feature_extractor(
         fabric: Fabric,
         model: BaseLitModule,
         optimizer: Optimizer,
-        scheduler: Optional[LRScheduler],
+        scheduler: Optional[ReduceLROnPlateau],
         train_dataloader: DataLoader,
         test_dataloader: DataLoader,
 ):
