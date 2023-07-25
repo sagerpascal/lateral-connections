@@ -8,7 +8,7 @@ import wandb
 from lightning import Fabric
 from torch import Tensor
 from torch.optim import Optimizer
-from torch.optim.lr_scheduler import LRScheduler
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -111,6 +111,7 @@ def configure() -> Dict[str, Optional[Any]]:
     """
     args = parse_args()
     config = get_config(args.config, args)
+    torch.backends.cudnn.deterministic = True
     if not torch.cuda.is_available():
         print_warn("CUDA is not available.", title="Slow training expected.")
     return config
@@ -378,7 +379,7 @@ def train(
         test_loader: DataLoader,
         fabric: Fabric,
         l2_opt: Optimizer,
-        l2_sched: Optional[LRScheduler] = None
+        l2_sched: Optional[ReduceLROnPlateau] = None
 ):
     """
     Train the model.

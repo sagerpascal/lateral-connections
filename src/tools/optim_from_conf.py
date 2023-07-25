@@ -3,14 +3,14 @@ from typing import Dict, Iterator, List, Optional, Tuple, Union
 import torch
 from torch.nn import Parameter
 from torch.optim import Optimizer
-from torch.optim.lr_scheduler import LRScheduler
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 
 def torch_optim_from_conf(
         params: Union[List[Iterator[Parameter]] | Iterator[Parameter]],
         optim_key: Union[List[str] | str],
         config: Dict,
-) -> Tuple[Union[Optimizer | List[Optimizer]], Union[Optional[LRScheduler] | List[Optional[LRScheduler]]]]:
+) -> Tuple[Union[Optimizer | List[Optimizer]], Union[Optional[ReduceLROnPlateau] | List[Optional[ReduceLROnPlateau]]]]:
     """
     Create a torch optimizer from a config dict. The optimizer key specifies which optimizer to use from the config
     dict.

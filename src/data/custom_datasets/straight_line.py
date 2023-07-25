@@ -22,6 +22,7 @@ class StraightLine(Dataset):
                  fixed_lines_eval_test: Optional[bool] = False,
                  noise: Optional[float] = 0.,
                  aug_strategy: Optional[str] = 'random',
+                 n_black_pixels: Optional[int] = 1,
                  transform: Optional[Callable] = None):
         """
         Dataset that generates images with a straight line.
@@ -34,6 +35,7 @@ class StraightLine(Dataset):
         :param fixed_lines_eval_test: Whether to use fixed lines for the evaluation and test sets.
         :param noise: The amount of noise to add to the image (i.e. probability to set some pixels to 1).
         :param aug_strategy: The strategy to use for creating different image views. Can be 'random' or 'trajectory'.
+        :param n_black_pixels: The number of black pixels to add to the image.
         :param transform: Optional transform to be applied on a sample.
         """
         super().__init__()
@@ -53,7 +55,7 @@ class StraightLine(Dataset):
         self.aug_strategy = aug_strategy
         self.transform = transform
         self.aug_range = aug_range
-        self.n_black_pixels = 1
+        self.n_black_pixels = n_black_pixels
 
         if self.transform is None:
             self.transform = T.Compose([
@@ -209,7 +211,7 @@ class StraightLine(Dataset):
         else:
             raise ValueError('num_channels must be 1 or 3')
 
-        # add a black pixel in the middle (discontinous line)
+        # add a black pixel in the middle (discontinuous line)
         if n_black_pixels > 0:
             img = np.array(img)
             line_center = (line_coords[0][0] + line_coords[1][0]) // 2, (line_coords[0][1] + line_coords[1][1]) // 2
@@ -242,7 +244,7 @@ class StraightLine(Dataset):
             aug_strategy: Optional[str] = None,
             line_coords: Optional[Tuple[Tuple[int, int], Tuple[int, int]]] = None,
             noise: Optional[float] = None,
-            n_black_pixels: Optional[int] = 0
+            n_black_pixels: Optional[int] = 0,
     ):
         """
         Returns an image with a random straight line drawn on it.
@@ -290,16 +292,16 @@ def _plot_some_samples():
         transforms.ToTensor(),
     ])
 
-    dataset = StraightLine(split="test", img_h=32, img_w=32, num_images=10, num_aug_versions=9, num_channels=1,
-                           transform=transform, vertical_horizontal_only=True, fixed_lines_eval_test=True, noise=0.005,
-                           aug_strategy='trajectory', aug_range=15)
+    dataset = StraightLine(split="test", img_h=32, img_w=32, num_images=12, num_aug_versions=9, num_channels=1,
+                           transform=transform, vertical_horizontal_only=True, fixed_lines_eval_test=True, noise=0.00,
+                           aug_strategy='trajectory', aug_range=15, n_black_pixels=5)
 
-    fig, axs = plt.subplots(10, 10, figsize=(10, 10))
-    for i in range(10):
-        img, meta = dataset[i]
+    fig, axs = plt.subplots(12, 10, figsize=(10, 12))
+    for i in range(12):
+        img, meta = dataset.get_item(i, n_black_pixels=0)
         for idx in range(img.shape[0]):
             j = i * 10 + idx
-            axs[j // 10, j % 10].imshow(img[idx].squeeze(), vmin=0, vmax=1, cmap='gray', interpolation='none')
+            axs[j // 10, j % 10].imshow(img[idx].squeeze(), vmin=0, vmax=1, cmap='gray')
             axs[j // 10, j % 10].axis('off')
     plt.tight_layout()
     plt.show()

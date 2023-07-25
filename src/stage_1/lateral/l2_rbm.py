@@ -8,7 +8,7 @@ import torch.utils.data
 from lightning.fabric import Fabric
 from torch import Tensor
 from torch.optim import Optimizer
-from torch.optim.lr_scheduler import LRScheduler
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from data import plot_images
 from models.lightning_modules.lightning_base import BaseLitModule
@@ -109,7 +109,7 @@ class L2RBM(BaseLitModule):
         """
         return RBM()
 
-    def configure_optimizers(self) -> Tuple[Optimizer, Optional[LRScheduler]]:
+    def configure_optimizers(self) -> Tuple[Optimizer, Optional[ReduceLROnPlateau]]:
         """
         Configure (create instance) the optimizer.
         :return: A torch optimizer.

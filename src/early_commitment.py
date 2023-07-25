@@ -19,7 +19,7 @@ from lightning.fabric import Fabric
 from sklearn.metrics import normalized_mutual_info_score
 from torch import Tensor
 from torch.optim import Optimizer
-from torch.optim.lr_scheduler import LRScheduler
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -132,7 +132,7 @@ class EarlyCommitmentModule(BaseLitModule):
         """
         return BlockCallbackResNet18(self.conf)
 
-    def configure_optimizers(self) -> Tuple[Optimizer, Optional[LRScheduler]]:
+    def configure_optimizers(self) -> Tuple[Optimizer, Optional[ReduceLROnPlateau]]:
         """
         Configure (create instance) the optimizer.
         :return: A torch optimizer.
@@ -147,7 +147,7 @@ class EarlyCommitmentModule(BaseLitModule):
 
 
 def setup_components(config: Dict[str, Optional[Any]]) -> (
-        Fabric, EarlyCommitmentModule, Optimizer, LRScheduler, DataLoader, DataLoader, pl.LightningDataModule):
+        Fabric, EarlyCommitmentModule, Optimizer, ReduceLROnPlateau, DataLoader, DataLoader, pl.LightningDataModule):
     """
     Setup components for training.
     :param config: Configuration dict
