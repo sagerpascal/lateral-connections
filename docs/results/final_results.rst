@@ -27,7 +27,7 @@ The reconstructed net fragment of S2 is shown in the bottom right corner of the 
 
 In the following, the results from multiple experiments are visualised. For each experiment, two videos are shown:
 Both videos are produced by the same model using the same weights. However, the first
-video shows the activations if a fixed threshold of 0.5 for each neuron is used (i.e. probabilities >=0.5 lead to an activation of a neuron).
+video shows the activations if a fixed threshold of 0.5 (S1) and 0.9 (S2) for each neuron is used (i.e. probabilities >=0.5 / >=0.9 lead to an activation of a neuron).
 This helps to better understand the behaviour of the model.
 The second video shows the activations if the neurons are sampled from a Bernoulli distribution.
 This corresponds to the behaviour of the model during training.
@@ -37,6 +37,11 @@ Therefore, S2 only stored these lines in its memory.
 However, S1 can also build net fragments for data not seen during training.
 
 The following videos show the behaviour of the model if the line is rotated around the origin.
+
+
+.. warning::
+   If the videos are not shown, the encoding is not supported by your browser.
+   Please try a Chromium-based browser (e.g. Google Chrome, Brave Browser, etc.).
 
 **Fixed Threshold**
 
