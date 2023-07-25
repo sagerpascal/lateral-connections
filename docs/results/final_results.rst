@@ -40,6 +40,7 @@ The following videos show the behaviour of the model if the line is rotated arou
 
 **Fixed Threshold**
 
+
 .. video:: ../_static/results/final_results/threshold/normal.mp4
    :width: 450
 
@@ -48,8 +49,9 @@ The following videos show the behaviour of the model if the line is rotated arou
 .. video:: ../_static/results/final_results/bernoulli/normal.mp4
    :width: 450
 
+
 Noise in the Input
-^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~~
 
 The following videos show the behaviour of the model if each *input* pixel is flipped with a probability of 0.005.
 The model is not able to filter all noise. A reason is that each filter activates quite strongly to noise in the input data,
@@ -58,12 +60,12 @@ be observed at line endings. Therefore, the noise receives lateral support and i
 
 **Fixed Threshold**
 
-.. video:: ../_static/results/final_results/005_noise/normal.mp4
+.. video:: ../_static/results/final_results/threshold/005_noise.mp4
    :width: 450
 
 **Bernoulli Sampling**
 
-.. video:: ../_static/results/final_results/005_noise/normal.mp4
+.. video:: ../_static/results/final_results/bernoulli/005_noise.mp4
    :width: 450
 
 
@@ -75,17 +77,17 @@ Therefore, the noise does not receive enough lateral support and is supressed.
 
 **Fixed Threshold**
 
-.. video:: ../_static/results/final_results/005_noise_per_channel/normal.mp4
+.. video:: ../_static/results/final_results/threshold/005_noise_per_channel.mp4
    :width: 450
 
 **Bernoulli Sampling**
 
-.. video:: ../_static/results/final_results/005_noise_per_channel/normal.mp4
+.. video:: ../_static/results/final_results/bernoulli/005_noise_per_channel.mp4
    :width: 450
 
 
 Interrupted Line
-^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~
 
 The following videos show the behaviour of the model if the line is interrupted in the middle.
 Due to the lateral support, the model is able to reconstruct the line if up to 8 pixels are missing.
@@ -95,30 +97,30 @@ is limited to 11 pixels.
 
 **Fixed Threshold** for 5 missing pixels
 
-.. video:: ../_static/results/final_results/5_black_pixels/normal.mp4
+.. video:: ../_static/results/final_results/threshold/5_black_pixels.mp4
    :width: 450
 
 **Bernoulli Sampling**  for 5 missing pixels
 
-.. video:: ../_static/results/final_results/5_black_pixels/normal.mp4
+.. video:: ../_static/results/final_results/bernoulli/5_black_pixels.mp4
    :width: 450
 
 **Fixed Threshold** for 8 missing pixels
 
-.. video:: ../_static/results/final_results/8_black_pixels/normal.mp4
+.. video:: ../_static/results/final_results/threshold/8_black_pixels.mp4
    :width: 450
 
 **Bernoulli Sampling**  for 8 missing pixels
 
-.. video:: ../_static/results/final_results/8_black_pixels/normal.mp4
+.. video:: ../_static/results/final_results/bernoulli/8_black_pixels.mp4
    :width: 450
 
 **Fixed Threshold** for 10 missing pixels
 
-.. video:: ../_static/results/final_results/10_black_pixels/normal.mp4
+.. video:: ../_static/results/final_results/threshold/10_black_pixels.mp4
    :width: 450
 
 **Bernoulli Sampling**  for 10 missing pixels
 
-.. video:: ../_static/results/final_results/10_black_pixels/normal.mp4
+.. video:: ../_static/results/final_results/bernoulli/10_black_pixels.mp4
    :width: 450
