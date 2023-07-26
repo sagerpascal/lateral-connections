@@ -36,12 +36,16 @@ Please not that the model has only seen horizontal, vertical, and diagonal lines
 Therefore, *S2* only stored these lines in its memory.
 However, *S1* can also build net fragments for data not seen during training.
 
-The following videos show the behaviour of the model if the line is rotated around the origin.
-
-
 .. warning::
    If the videos are not shown, the encoding is not supported by your browser.
    Please try a Chromium-based browser (e.g. Google Chrome, Brave Browser, etc.).
+
+
+Rotating Line
+~~~~~~~~~~~~~
+
+The following videos show the behaviour of the model if the line is rotated around the origin.
+
 
 **Fixed Threshold**
 
@@ -74,6 +78,9 @@ be observed at line endings. Therefore, the noise receives lateral support and i
    :width: 450
 
 
+Noise in the Feature Channels
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 The same experiment is repeated, but this time the noise is added to each *feature channel* after the filter has been applied.
 Thus, the same amount of noise is added, but not at the same position per channel.
 As it can be observed, the model is able to filter the noise much better.
@@ -100,32 +107,41 @@ This is quite remarkable, as the model has never seen such a line during trainin
 is limited to :math:`11` pixels.
 
 
-**Fixed Threshold** for :math:`5` missing pixels
+5 Missing Pixels
+^^^^^^^^^^^^^^^^
+
+**Fixed Threshold**
 
 .. video:: ../_static/results/final_results/threshold/5_black_pixels.mp4
    :width: 450
 
-**Bernoulli Sampling**  for :math:`5` missing pixels
+**Bernoulli Sampling**
 
 .. video:: ../_static/results/final_results/bernoulli/5_black_pixels.mp4
    :width: 450
 
-**Fixed Threshold** for :math:`8` missing pixels
+8 Missing Pixels
+^^^^^^^^^^^^^^^^
+
+**Fixed Threshold**
 
 .. video:: ../_static/results/final_results/threshold/8_black_pixels.mp4
    :width: 450
 
-**Bernoulli Sampling**  for :math:`8` missing pixels
+**Bernoulli Sampling**
 
 .. video:: ../_static/results/final_results/bernoulli/8_black_pixels.mp4
    :width: 450
 
-**Fixed Threshold** for :math:`10` missing pixels
+10 Missing Pixels
+^^^^^^^^^^^^^^^^^
+
+**Fixed Threshold**
 
 .. video:: ../_static/results/final_results/threshold/10_black_pixels.mp4
    :width: 450
 
-**Bernoulli Sampling**  for :math:`10` missing pixels
+**Bernoulli Sampling**
 
 .. video:: ../_static/results/final_results/bernoulli/10_black_pixels.mp4
    :width: 450
