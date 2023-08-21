@@ -11,13 +11,11 @@ Please find the abstract, the full thesis, and videos presenting the results bel
 
 .. toctree::
    :maxdepth: 1
-   :caption: Contents:
+   :caption: Contents
 
    results/final_results
 
 
-Download Thesis
----------------
 
 .. warning::
     This is a pre-version of the thesis. A final version will be uploaded soon.
