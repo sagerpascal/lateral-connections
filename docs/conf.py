@@ -33,6 +33,7 @@ extensions = [
     'sphinx.ext.viewcode',
     'sphinx.ext.napoleon',
     'sphinxcontrib.video',
+    'sphinxcontrib.pdfembed',
 ]
 
 templates_path = ['_templates']
