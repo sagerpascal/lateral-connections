@@ -13,7 +13,6 @@ Please find the abstract, the full thesis, and videos presenting the results bel
    :maxdepth: 1
    :caption: Contents:
 
-   results/thesis
    results/final_results
 
 Abstract
@@ -36,6 +35,14 @@ The experimental findings demonstrate that lateral connections trained with Hebb
 The network exhibits significant robustness using cell support and can deactivate up to :math:`91.7\%` of unwanted cell activity triggered by noise signals. Furthermore, lateral support can restore discontinuous lines, demonstrating the network's ability to deal with occluded objects. With a range of lateral connections of :math:`11` pixels, interruptions of up to :math:`8` pixels can be reconstructed, and with additional feedback from *S2*, even interruptions of up to :math:`20` pixels can be restored. Improving the proposed framework can potentially reduce several weaknesses of conventional neural networks in the future and is considered a promising alternative research direction.
 
 
+Download Thesis
+---------------
+
+.. warning::
+    This is a pre-version of the thesis. A final version will be uploaded soon.
+
+
+Download the :download:`thesis <../_static/results/msc_thesis-v0-9-3.pdf>` as PDF.
 
 
 
