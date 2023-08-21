@@ -1,17 +1,6 @@
 Results
 =======
 
-*Abstract*: *Not available yet*
-
-Thesis
-------
-
-Download Thesis: *Not available yet*
-
-
-Video Visualisations
---------------------
-
 In the following, video visualisations of the results presented in the thesis are shown.
 The input into the model is a line that is rotating counter-clockwise around the origin.
 This input is fed into the sensory system that is shown in the center of the video.
