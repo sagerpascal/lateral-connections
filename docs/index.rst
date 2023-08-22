@@ -17,11 +17,7 @@ Please find the abstract, the full thesis, and videos presenting the results bel
 
 
 
-.. warning::
-    This is a pre-version of the thesis. A final version will be uploaded soon.
-
-
-**Download the** :download:`thesis <_static/results/msc_thesis-v0-9-3.pdf>` **as PDF.**
+**Download the** :download:`thesis <_static/results/msc_thesis-Pascal_Sager-V1_0.pdf>` **as PDF.**
 
 
 Abstract
