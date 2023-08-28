@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import lightning.pytorch as pl
+import numpy as np
 import torch
 import wandb
 from lightning import Fabric
@@ -200,6 +201,12 @@ def cycle(
     for view_idx in range(features.shape[1]):
         x_view_features = features[:, view_idx, ...]
         x_view_features = feature_extractor.binarize_features(x_view_features)
+
+        # x_view_features = np.array(x_view_features.detach().cpu())
+        # x_view_features = x_view_features + np.random.choice(2, x_view_features.shape, p=[1 - 0.005, 0.005])
+        # x_view_features = torch.from_numpy(x_view_features).cuda().float()
+        # x_view_features = feature_extractor.binarize_features(x_view_features)
+
         if store_tensors:
             input_features.append(x_view_features)
 
@@ -215,7 +222,7 @@ def cycle(
 
             z2, z2_feedback, h, loss = l2.eval_step(z)
 
-            if epoch > 4:  #F.mse_loss(z, z2_feedback) < .05:
+            if epoch > 5:  #F.mse_loss(z, z2_feedback) < .05:
                 z = z2_feedback
 
             features_lat.append(z)
@@ -346,9 +353,9 @@ def single_eval_epoch(
     assert not wandb_b or wandb_b and store_plots, "Wandb logging requires storing the plots."
 
     if plot or wandb_b or store_plots:
-        if epoch == 0:
-            feature_extractor.plot_model_weights(show_plot=plot)
-
+        # if epoch == 0:
+        #     feature_extractor.plot_model_weights(show_plot=plot)
+#
         plots_fp = lateral_network.plot_samples(plt_img,
                                                 plt_features,
                                                 plt_input_features,
@@ -358,16 +365,16 @@ def single_eval_epoch(
                                                 show_plot=plot)
         weights_fp = lateral_network.plot_model_weights(show_plot=plot)
         # plots_l2_fp = l2.plot_samples(plt_img, plt_activations_l2, show_plot=plot)
-        if epoch == config['run']['n_epochs']:
-            videos_fp = lateral_network.create_activations_video(plt_img, plt_input_features, plt_activations)
-
-        if wandb_b:
-            logs = {str(pfp.name[:-4]): wandb.Image(str(pfp)) for pfp in plots_fp}
-            logs |= {str(wfp.name[:-4]): wandb.Image(str(wfp)) for wfp in weights_fp}
-            logs |= {str(wfp.name[:-4]): wandb.Image(str(wfp)) for wfp in plots_l2_fp}
-            if epoch == config['run']['n_epochs']:
-                logs |= {str(vfp.name[:-4]): wandb.Video(str(vfp)) for vfp in videos_fp}
-            wandb.log(logs | {"epoch": epoch, "trainer/global_step": epoch})
+        # if epoch == config['run']['n_epochs']:
+        #     videos_fp = lateral_network.create_activations_video(plt_img, plt_input_features, plt_activations)
+#
+        # if wandb_b:
+        #     logs = {str(pfp.name[:-4]): wandb.Image(str(pfp)) for pfp in plots_fp}
+        #     logs |= {str(wfp.name[:-4]): wandb.Image(str(wfp)) for wfp in weights_fp}
+        #     logs |= {str(wfp.name[:-4]): wandb.Image(str(wfp)) for wfp in plots_l2_fp}
+        #     if epoch == config['run']['n_epochs']:
+        #         logs |= {str(vfp.name[:-4]): wandb.Video(str(vfp)) for vfp in videos_fp}
+        #     wandb.log(logs | {"epoch": epoch, "trainer/global_step": epoch})
 
 
 def train(

@@ -20,19 +20,19 @@ from tools.store_load_run import load_run
 from utils import print_start
 
 config_demo = {
-    "n_cycles": 200,
+    "n_cycles": 100,
     "cycle_length": 1,
     "noise":
         {
-            "min": 0.0,
+            "min": 0.005,
             "max": 0.005,
-            "probability": 0.2,
+            "probability": 0.,
         },
     "discontinuous_line":
         {
-            "probability": 0.2,
+            "probability": 1.,
             "min_black": 0,
-            "max_black": 5,
+            "max_black": 20,
         },
     "line":
         {
@@ -51,7 +51,7 @@ class CustomImage:
         """
         Initialize the class.
         """
-        self.img_size = 128
+        self.img_size = 512
         self.img_template = self.create_template_image()
 
     def to_mask(self, mask: np.array) -> np.array:
@@ -157,10 +157,10 @@ class CustomImage:
         l2_act = Image.fromarray(self.to_mask((l2_act * 255).squeeze().cpu().numpy()))
 
         # Resize Images
-        img = img.resize((self.img_size, self.img_size), Image.Resampling.LANCZOS)
-        in_features = in_features.resize((self.img_size, self.img_size), Image.Resampling.LANCZOS)
-        l1_act = l1_act.resize((self.img_size, self.img_size), Image.Resampling.LANCZOS)
-        l2_act = l2_act.resize((self.img_size, self.img_size), Image.Resampling.LANCZOS)
+        img = img.resize((self.img_size, self.img_size), Image.Resampling.NEAREST)
+        in_features = in_features.resize((self.img_size, self.img_size), Image.Resampling.NEAREST)
+        l1_act = l1_act.resize((self.img_size, self.img_size), Image.Resampling.NEAREST)
+        l2_act = l2_act.resize((self.img_size, self.img_size), Image.Resampling.NEAREST)
 
         output = self.img_template.copy()
 
@@ -214,7 +214,7 @@ def get_strategy(config: Dict[str, Any]) -> Dict[str, Any]:
     :param config: Configuration of the demo, describing the strategy
     :return: The strategy
     """
-    strategy = {"noise": [0.0], "black": [0], "line": [((2, 16), (30, 16))]}
+    strategy = {"noise": [0.0], "black": [20], "line": [((2, 16), (30, 16))]}
     for cycle in range(config["n_cycles"]):
         if random.random() <= config["noise"]["probability"]:
             noise = random.uniform(config["noise"]["min"], config["noise"]["max"])
