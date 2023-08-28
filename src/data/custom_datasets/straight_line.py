@@ -22,7 +22,7 @@ class StraightLine(Dataset):
                  fixed_lines_eval_test: Optional[bool] = False,
                  noise: Optional[float] = 0.,
                  aug_strategy: Optional[str] = 'random',
-                 n_black_pixels: Optional[int] = 1,
+                 n_black_pixels: Optional[int] = 0,
                  transform: Optional[Callable] = None):
         """
         Dataset that generates images with a straight line.
@@ -244,7 +244,7 @@ class StraightLine(Dataset):
             aug_strategy: Optional[str] = None,
             line_coords: Optional[Tuple[Tuple[int, int], Tuple[int, int]]] = None,
             noise: Optional[float] = None,
-            n_black_pixels: Optional[int] = 0,
+            n_black_pixels: Optional[int] = 0
     ):
         """
         Returns an image with a random straight line drawn on it.

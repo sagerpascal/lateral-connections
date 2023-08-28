@@ -2,7 +2,7 @@ dataset:
   name: straightline
   augmentation: None
   loader: torch
-  batch_size: 1
+  batch_size: 128
   num_workers: 0
 
 run:
@@ -73,4 +73,4 @@ lateral_model:
     lr: 0.2
     hebbian_rule: 'vanilla'
     neg_corr: True
-    act_threshold: 0.5  # 'bernoulli'
+    act_threshold: 0.45  # 'bernoulli'  # 0.5

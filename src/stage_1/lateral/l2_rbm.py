@@ -16,7 +16,7 @@ from tools import torch_optim_from_conf
 
 
 class RBM(nn.Module):
-    def __init__(self, n_visible=4 * 32 * 32 * 10, n_hidden=16, k=5):
+    def __init__(self, n_visible=4 * 32 * 32, n_hidden=16, k=5):
         """Create a RBM."""
         super(RBM, self).__init__()
         self.v = nn.Parameter(torch.randn(1, n_visible))
