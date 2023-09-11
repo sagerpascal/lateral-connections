@@ -76,14 +76,27 @@ class StraightLine(Dataset):
         :return: a Tuple of two Tuples of x,y coordinates.
         """
         # TODO: Delete this (always the same 2 lines)
-        if idx % 4 == 0:
-            return (2, 16), (30, 16)
-        elif idx % 4 == 1:
-            return (16, 2), (16, 30)
-        elif idx % 4 == 2:
-            return (2, 2), (30, 30)
-        elif idx % 4 == 3:
-            return (2, 30), (30, 2)
+        # if idx % 4 == 0:
+        #     return (2, 16), (30, 16)
+        # elif idx % 4 == 1:
+        #     return (16, 2), (16, 30)
+        # elif idx % 4 == 2:
+        #     return (2, 2), (30, 30)
+        # elif idx % 4 == 3:
+        #     return (2, 30), (30, 2)
+
+        if random.random() < 0.5:
+            x1 = 2
+            x2 = 30
+            y1 = random.randint(2, 30)
+            y2 = 32 - y1
+        else:
+            y1 = 2
+            y2 = 30
+            x1 = random.randint(2, 30)
+            x2 = 32 - x1
+
+        return (x1, y1), (x2, y2)
 
         # encourage longer lines
         x1 = random.randint(0, self.img_w // 2)

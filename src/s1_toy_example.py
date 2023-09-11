@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional
 
 import lightning.pytorch as pl
 import torch
+import torch.nn.functional as F
 import wandb
 from lightning import Fabric
 from torch import Tensor
@@ -215,8 +216,10 @@ def cycle(
 
             z2, z2_feedback, h, loss = l2.eval_step(z)
 
-            if epoch > 4:  #F.mse_loss(z, z2_feedback) < .05:
-                z = z2_feedback
+            if epoch > 10:
+                mask_active = (z > 0) | (z2_feedback > 0)
+                if F.mse_loss(z[mask_active], z2_feedback[mask_active]) < .1:
+                    z = z2_feedback
 
             features_lat.append(z)
             if store_tensors:
@@ -284,7 +287,7 @@ def single_train_epoch(
         :param l2_opt: The optimizer for the L2-model.
         """
     feature_extractor.eval()
-    lateral_network.train()
+    lateral_network.eval()
     l2.train()
     for i, batch in tqdm(enumerate(train_loader),
                          total=len(train_loader),
@@ -346,9 +349,9 @@ def single_eval_epoch(
     assert not wandb_b or wandb_b and store_plots, "Wandb logging requires storing the plots."
 
     if plot or wandb_b or store_plots:
-        if epoch == 0:
-            feature_extractor.plot_model_weights(show_plot=plot)
-
+        # if epoch == 0:
+        #     feature_extractor.plot_model_weights(show_plot=plot)
+#
         plots_fp = lateral_network.plot_samples(plt_img,
                                                 plt_features,
                                                 plt_input_features,
@@ -357,7 +360,7 @@ def single_eval_epoch(
                                                 plot_input_features=epoch == 0,
                                                 show_plot=plot)
         weights_fp = lateral_network.plot_model_weights(show_plot=plot)
-        # plots_l2_fp = l2.plot_samples(plt_img, plt_activations_l2, show_plot=plot)
+        plots_l2_fp = l2.plot_samples(plt_img, plt_activations_l2, show_plot=plot)
         if epoch == config['run']['n_epochs']:
             videos_fp = lateral_network.create_activations_video(plt_img, plt_input_features, plt_activations)
 
@@ -395,9 +398,9 @@ def train(
     """
     start_epoch = config['run']['current_epoch']
 
-    if config['logging']['wandb']['active'] or config['run']['plots']['enable']:
-        single_eval_epoch(config, feature_extractor, lateral_network, l2, test_loader, 0)
-        lateral_network.on_epoch_end()  # print logs
+    # if config['logging']['wandb']['active'] or config['run']['plots']['enable']:
+    #     single_eval_epoch(config, feature_extractor, lateral_network, l2, test_loader, 0)
+    #     lateral_network.on_epoch_end()  # print logs
 
     for epoch in range(start_epoch, config['run']['n_epochs']):
         single_train_epoch(config, feature_extractor, lateral_network, l2, train_loader, epoch + 1, fabric, l2_opt)

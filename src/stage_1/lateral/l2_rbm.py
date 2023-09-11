@@ -91,8 +91,8 @@ class L2RBM(BaseLitModule):
         # loss = self.model.free_energy_hidden(pt) - self.model.free_energy_hidden(pt2)
         v, v_gibb, h = self.forward(x)
         loss = self.model.free_energy(v) - self.model.free_energy(v_gibb)
-        v = v.reshape(-1, 4, 32, 32)
-        v_gibb = v_gibb.reshape(-1, 4, 32, 32)
+        v = v.reshape(-1, 4*10, 32, 32)
+        v_gibb = v_gibb.reshape(-1, 4*10, 32, 32)
         self.log_step(processed_values={"loss": loss}, metric_pairs=[(v, v_gibb)], prefix=log_prefix)
         return v, v_gibb, h, loss
 
