@@ -5,6 +5,7 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import cv2
 import lightning.pytorch as pl
+import matplotlib
 import numpy as np
 import torch
 from PIL import Image, ImageDraw, ImageFont
@@ -30,7 +31,7 @@ config_demo = {
         },
     "discontinuous_line":
         {
-            "probability": 0.2,
+            "probability": 0.0,
             "min_black": 0,
             "max_black": 5,
         },
@@ -60,10 +61,11 @@ class CustomImage:
         :param mask: The mask, np array with shape (4, height, width)
         :return: The image, np array with shape (height, width, 3)
         """
-        mask_colors = [[255, 0, 0], [0, 255, 0], [180, 180, 0], [0, 0, 255]]
+
+        mask_colors = matplotlib.colormaps['viridis'](range(0, 256, 256//mask.shape[0]))
         result = np.zeros((3, mask.shape[1], mask.shape[2]))
         for channel in range(mask.shape[0]):
-            mask_c = np.ones_like(result) * np.array(mask_colors[channel]).reshape(3, 1, 1)
+            mask_c = np.ones_like(result) * (mask_colors[channel, :3]*255).astype(int).reshape(3, 1, 1)
             mask_idx = np.repeat((mask[channel] > 0.5)[np.newaxis, :, :], 3, axis=0)
             result[mask_idx] = np.clip(result[mask_idx] + mask_c[mask_idx], a_min=0, a_max=255)
         return result.astype("uint8").transpose(1, 2, 0)
