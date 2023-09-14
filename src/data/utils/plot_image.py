@@ -130,7 +130,7 @@ def plot_images(
             fig.colorbar(im, cax=cax, orientation='vertical')
 
         if masks is not None and mask is not None:
-            ax.imshow(mask, alpha=0.6, cmap='jet', interpolation=interpolation_, vmin=mask_vmin, vmax=mask_vmax)
+            ax.imshow(mask, alpha=1., cmap='jet', interpolation=interpolation_, vmin=mask_vmin, vmax=mask_vmax)
 
         if lbl is not None:
             lbl = str(lbl.item()) if isinstance(lbl, torch.Tensor) else lbl

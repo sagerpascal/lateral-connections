@@ -359,8 +359,8 @@ def single_eval_epoch(
                                                 plt_activations_f,
                                                 plot_input_features=epoch == 0,
                                                 show_plot=plot)
-        weights_fp = lateral_network.plot_model_weights(show_plot=plot)
-        plots_l2_fp = l2.plot_samples(plt_img, plt_activations_l2, show_plot=plot)
+        #weights_fp = lateral_network.plot_model_weights(show_plot=plot)
+        #plots_l2_fp = l2.plot_samples(plt_img, plt_activations_l2, show_plot=plot)
         if epoch == config['run']['n_epochs']:
             videos_fp = lateral_network.create_activations_video(plt_img, plt_input_features, plt_activations)
 

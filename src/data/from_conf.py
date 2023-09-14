@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, TypeVar, Union
 
+import torch
 from torchvision import transforms
 from torchvision.datasets import CIFAR10, CIFAR100, ImageNet, MNIST
 
@@ -30,9 +31,10 @@ def _get_dataset(
     :return: A dataset.
     """
     if dataset_name == "mnist":
-        train_set = MNIST(root=dataset_path, transform=transform, **dataset_config['train_dataset_params'])
+        transform = transforms.Compose([transforms.ToTensor(), transforms.Pad(2)])
+        train_set = torch.utils.data.Subset(MNIST(root=dataset_path, transform=transform, **dataset_config['test_dataset_params']), list(range(500)))
         valid_set = None
-        test_set = MNIST(root=dataset_path, transform=transform, **dataset_config['test_dataset_params'])
+        test_set = torch.utils.data.Subset(MNIST(root=dataset_path, transform=transform, **dataset_config['test_dataset_params']), [1, 2, 3, 4, 5])
     elif dataset_name == "cifar10":
         train_set = CIFAR10(root=dataset_path, transform=transform, **dataset_config['train_dataset_params'])
         valid_set = None
