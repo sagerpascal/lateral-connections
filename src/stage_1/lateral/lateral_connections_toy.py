@@ -255,7 +255,7 @@ class LateralLayer(nn.Module):
             if self.act_threshold == "bernoulli":
                 x_lateral_bin = torch.bernoulli(torch.clip(x_lateral_norm ** 3, 0, 1))
             else:
-                x_lateral_bin = (x_lateral_norm ** (1.45) >= self.act_threshold).float()
+                x_lateral_bin = (x_lateral_norm ** (1.2) >= self.act_threshold).float()
 
             # TODO:
             # if self.training and self.ts == 4:
