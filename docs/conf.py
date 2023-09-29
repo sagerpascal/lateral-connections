@@ -23,7 +23,7 @@ copyright = '2023, Pascal Sager'
 author = 'Pascal Sager'
 
 # The full version, including alpha/beta/rc tags
-release = '00.00.02'
+release = '01.00.00'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
