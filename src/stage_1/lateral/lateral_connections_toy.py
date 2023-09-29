@@ -34,6 +34,7 @@ class LateralLayer(nn.Module):
                  hebbian_rule: Optional[HEBBIAN_ALGO] = 'vanilla',
                  neg_corr: Optional[bool] = False,
                  act_threshold: Optional[Union[Literal["bernoulli"] | float]] = "bernoulli",
+                 square_factor: Optional[float] = 1.2,
                  ):
         """
         Lateral Layer trained with Hebbian Learning. The input and output of this layer are binary.
@@ -78,6 +79,7 @@ class LateralLayer(nn.Module):
         self.neg_corr = neg_corr
         self.act_threshold = act_threshold
         self.mask = None
+        self.sf = square_factor
 
         assert self.hebbian_rule in ['vanilla'], \
             f"hebbian_rule must be 'vanilla', but is {self.hebbian_rule}"
@@ -253,9 +255,9 @@ class LateralLayer(nn.Module):
             x_lateral_norm = x_lateral_norm.reshape(x_lateral_norm_s)
 
             if self.act_threshold == "bernoulli":
-                x_lateral_bin = torch.bernoulli(torch.clip(x_lateral_norm ** 3, 0, 1))
+                x_lateral_bin = torch.bernoulli(torch.clip(x_lateral_norm ** self.sf, 0, 1))
             else:
-                x_lateral_bin = (x_lateral_norm ** (1.2) >= self.act_threshold).float()
+                x_lateral_bin = (x_lateral_norm ** self.sf >= self.act_threshold).float()
 
             # TODO:
             # if self.training and self.ts == 4:

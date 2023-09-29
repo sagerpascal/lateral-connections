@@ -74,3 +74,4 @@ lateral_model:
     hebbian_rule: 'vanilla'
     neg_corr: True
     act_threshold: 0.5  # 'bernoulli'
+    square_factor: 1.2
