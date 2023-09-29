@@ -41,6 +41,7 @@ config_demo = {
         }
 }
 
+start_strategy = {"noise": [0.0], "black": [20], "line": [((2, 16), (30, 16))]}
 
 class CustomImage:
     """
@@ -51,7 +52,7 @@ class CustomImage:
         """
         Initialize the class.
         """
-        self.img_size = 512
+        self.img_size = 128
         self.img_template = self.create_template_image()
 
     def to_mask(self, mask: np.array) -> np.array:
@@ -214,7 +215,7 @@ def get_strategy(config: Dict[str, Any]) -> Dict[str, Any]:
     :param config: Configuration of the demo, describing the strategy
     :return: The strategy
     """
-    strategy = {"noise": [0.0], "black": [20], "line": [((2, 16), (30, 16))]}
+    strategy = start_strategy
     for cycle in range(config["n_cycles"]):
         if random.random() <= config["noise"]["probability"]:
             noise = random.uniform(config["noise"]["min"], config["noise"]["max"])
