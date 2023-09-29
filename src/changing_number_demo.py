@@ -13,6 +13,7 @@ from lightning import Fabric
 from torch import Tensor
 from tqdm import tqdm
 
+from data.custom_datasets.eight_bit_numbers import EightBitDataset
 from data.custom_datasets.straight_line import StraightLine
 from s1_toy_example import configure, cycle, setup_fabric, setup_feature_extractor, setup_l2, setup_lateral_network
 from stage_1.lateral.l2_rbm import L2RBM
@@ -62,10 +63,10 @@ class CustomImage:
         :return: The image, np array with shape (height, width, 3)
         """
 
-        mask_colors = matplotlib.colormaps['viridis'](range(0, 256, 256//mask.shape[0]))
+        mask_colors = matplotlib.colormaps['viridis'](range(0, 256, 256 // mask.shape[0]))
         result = np.zeros((3, mask.shape[1], mask.shape[2]))
         for channel in range(mask.shape[0]):
-            mask_c = np.ones_like(result) * (mask_colors[channel, :3]*255).astype(int).reshape(3, 1, 1)
+            mask_c = np.ones_like(result) * (mask_colors[channel, :3] * 255).astype(int).reshape(3, 1, 1)
             mask_idx = np.repeat((mask[channel] > 0.5)[np.newaxis, :, :], 3, axis=0)
             result[mask_idx] = np.clip(result[mask_idx] + mask_c[mask_idx], a_min=0, a_max=255)
         return result.astype("uint8").transpose(1, 2, 0)
@@ -262,18 +263,6 @@ def get_strategy(config: Dict[str, Any]) -> Dict[str, Any]:
     return strategy
 
 
-def get_dataset(strategy: Dict[str, Any]) -> StraightLine:
-    """
-    Generates a dataset for the given strategy
-    :param strategy: The strategy
-    :return: SrtaightLine dataset
-    """
-    return StraightLine(split="test",
-                        num_images=len(strategy["line"]),
-                        num_aug_versions=0,
-                        )
-
-
 def get_data_gen(strategy: Dict[str, Any], dataset: StraightLine):
     """
     Data generator for the given strategy and dataset
@@ -284,8 +273,7 @@ def get_data_gen(strategy: Dict[str, Any], dataset: StraightLine):
     for i in range(config_demo["n_cycles"] + 1):
         images, metas = [], []
         for _ in range(config_demo["cycle_length"]):
-            img, meta = dataset.get_item(i, line_coords=strategy["line"][i], noise=strategy["noise"][i],
-                                         n_black_pixels=strategy["black"][i])
+            img, meta = dataset[i]
             images.append(img.unsqueeze(0))
             metas.append(meta)
         yield torch.vstack(images).unsqueeze(0), metas
@@ -323,7 +311,7 @@ def load_data_generator() -> Iterator[Tuple[Tensor, List[Dict[str, Any]]]]:
     :return: Data generator
     """
     strategy = get_strategy(config_demo)
-    dataset = get_dataset(strategy)
+    dataset = EightBitDataset(samples_per_class=config_demo['n_cycles'])
     generator = get_data_gen(strategy, dataset)
     return generator
 
