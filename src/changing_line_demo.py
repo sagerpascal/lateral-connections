@@ -11,8 +11,11 @@ import torch
 from PIL import Image, ImageDraw, ImageFont
 from lightning import Fabric
 from torch import Tensor
+from torchvision.datasets import MNIST
+from torchvision.transforms import transforms
 from tqdm import tqdm
 
+from data.custom_datasets.eight_bit_numbers import EightBitDataset
 from data.custom_datasets.straight_line import StraightLine
 from s1_toy_example import configure, cycle, setup_fabric, setup_feature_extractor, setup_l2, setup_lateral_network
 from stage_1.lateral.l2_rbm import L2RBM
@@ -20,7 +23,10 @@ from stage_1.lateral.lateral_connections_toy import LateralNetwork
 from tools.store_load_run import load_run
 from utils import print_start
 
-config_demo = {
+count = 0
+dataset = "straight_line"  # eight-bit, mnist
+
+config = {
     "n_cycles": 200,
     "cycle_length": 1,
     "noise":
@@ -42,6 +48,8 @@ config_demo = {
         }
 }
 
+if dataset == "mnist":
+    config["n_cycles"] = 88
 
 class CustomImage:
     """
@@ -62,10 +70,10 @@ class CustomImage:
         :return: The image, np array with shape (height, width, 3)
         """
 
-        mask_colors = matplotlib.colormaps['viridis'](range(0, 256, 256//mask.shape[0]))
+        mask_colors = matplotlib.colormaps['viridis'](range(0, 256, 256 // mask.shape[0]))
         result = np.zeros((3, mask.shape[1], mask.shape[2]))
         for channel in range(mask.shape[0]):
-            mask_c = np.ones_like(result) * (mask_colors[channel, :3]*255).astype(int).reshape(3, 1, 1)
+            mask_c = np.ones_like(result) * (mask_colors[channel, :3] * 255).astype(int).reshape(3, 1, 1)
             mask_idx = np.repeat((mask[channel] > 0.5)[np.newaxis, :, :], 3, axis=0)
             result[mask_idx] = np.clip(result[mask_idx] + mask_c[mask_idx], a_min=0, a_max=255)
         return result.astype("uint8").transpose(1, 2, 0)
@@ -138,6 +146,7 @@ class CustomImage:
 
         return Image.fromarray(output)
 
+
     def create_image(self, img: Tensor, in_features: Tensor, l1_act: Tensor, l2_act: Tensor, h: Tensor) -> np.array:
         """
         Creates the image for the current step
@@ -186,7 +195,7 @@ class CustomImage:
 
 def rotate_point_square(p: Tuple[int, int]) -> Tuple[int, int]:
     """
-    Rotates a point ccw along a square trajectory
+    Rotates a point ccw along a square trajectory -> required for straight line dataset
     :param p: Current position
     :return: Next position
     """
@@ -211,8 +220,8 @@ def rotate_point_square(p: Tuple[int, int]) -> Tuple[int, int]:
 
 def get_strategy(config: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Generates a strategy for the dataset, i.e. a sequence of noise, black and line values that can be generated as
-    images
+    Generates a strategy for the straight line dataset, i.e. a sequence of noise, black and line values that can be
+    generated as images
     :param config: Configuration of the demo, describing the strategy
     :return: The strategy
     """
@@ -262,17 +271,29 @@ def get_strategy(config: Dict[str, Any]) -> Dict[str, Any]:
     return strategy
 
 
-def get_dataset(strategy: Dict[str, Any]) -> StraightLine:
+def get_dataset(config: Dict[str, Any], strategy: Dict[str, Any]) -> StraightLine:
     """
     Generates a dataset for the given strategy
     :param strategy: The strategy
     :return: SrtaightLine dataset
     """
-    return StraightLine(split="test",
-                        num_images=len(strategy["line"]),
-                        num_aug_versions=0,
-                        )
-
+    if dataset == "straight_line":
+        return StraightLine(split="test",
+                            num_images=len(strategy["line"]),
+                            num_aug_versions=0,
+                            )
+    elif dataset == "eight-bit":
+        return EightBitDataset(samples_per_class=config['n_cycles'])
+    elif dataset == "mnist":
+        transform = transforms.Compose([transforms.ToTensor(), transforms.Pad(2)])
+        return torch.utils.data.Subset(
+            MNIST(root='../data/mnist', transform=transform),
+            [1, 2, 4, 8, 9, 11, 13, 14, 16, 17, 18, 19, 22, 26, 30, 31, 32, 33, 35, 36, 38, 39, 40, 41, 42, 43, 45, 46,
+             47, 54, 57, 61, 64, 66, 68, 72, 73, 80, 83, 84, 86, 87, 92, 96, 99, 100, 101, 102, 103, 106, 108, 115, 118,
+             123, 124, 125, 127, 131, 132, 133, 136, 139, 140, 141, 142, 143, 144, 145, 148, 150, 151, 152, 153, 154,
+             155, 156, 158, 160, 162, 170, 174, 176, 178, 183, 186, 188, 191, 195, 196])
+    else:
+        raise ValueError(f"Invalid dataset {dataset}.")
 
 def get_data_gen(strategy: Dict[str, Any], dataset: StraightLine):
     """
@@ -281,11 +302,14 @@ def get_data_gen(strategy: Dict[str, Any], dataset: StraightLine):
     :param dataset: The dataset
     :return: Image generator
     """
-    for i in range(config_demo["n_cycles"] + 1):
+    for i in range(config["n_cycles"] + 1):
         images, metas = [], []
-        for _ in range(config_demo["cycle_length"]):
-            img, meta = dataset.get_item(i, line_coords=strategy["line"][i], noise=strategy["noise"][i],
-                                         n_black_pixels=strategy["black"][i])
+        for _ in range(config["cycle_length"]):
+            if dataset == "straight_line":
+                img, meta = dataset.get_item(i, line_coords=strategy["line"][i], noise=strategy["noise"][i],
+                                             n_black_pixels=strategy["black"][i])
+            elif dataset == "eight-bit" or dataset == "mnist":
+                img, meta = dataset[i]
             images.append(img.unsqueeze(0))
             metas.append(meta)
         yield torch.vstack(images).unsqueeze(0), metas
@@ -322,8 +346,8 @@ def load_data_generator() -> Iterator[Tuple[Tensor, List[Dict[str, Any]]]]:
     Loads the data generator
     :return: Data generator
     """
-    strategy = get_strategy(config_demo)
-    dataset = get_dataset(strategy)
+    strategy = get_strategy(config)
+    dataset = get_dataset(config, strategy)
     generator = get_data_gen(strategy, dataset)
     return generator
 
@@ -384,11 +408,11 @@ def process_data(
     :param l2: L2 network
     :param video_fp: Video file path
     """
-    fps = 10.
-    frames_last = int(fps // 2)  # show the median activation for a longer time...
+    fps = 1. if dataset == "mnist" else 10.
+    frames_last = 0 if dataset == "mnist" else int(fps // 2)  # show the median activation for a longer time...
     ci = CustomImage()
     out = cv2.VideoWriter(video_fp, cv2.VideoWriter_fourcc(*'mp4v'), fps, (ci.width, ci.height))
-    for i, img in tqdm(enumerate(generator), total=config_demo["n_cycles"] + 1):
+    for i, img in tqdm(enumerate(generator), total=config["n_cycles"] + 1):
         inp_features, l1_act, l2_act, l2_h_act = predict_sample(config, fabric, feature_extractor, lateral_network, l2,
                                                                 img, i)
         for view in range(img[0].shape[1]):
