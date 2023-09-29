@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 import lightning.pytorch as pl
 import numpy as np
 import torch
+import torch.nn.functional as F
 import wandb
 from lightning import Fabric
 from torch import Tensor
@@ -223,8 +224,10 @@ def cycle(
 
             z2, z2_feedback, h, loss = l2.eval_step(z)
 
-            if epoch > 5:  #F.mse_loss(z, z2_feedback) < .05:
-                z = z2_feedback
+            if epoch > 10:
+                mask_active = (z > 0) | (z2_feedback > 0)
+                if F.mse_loss(z[mask_active], z2_feedback[mask_active]) < .1:
+                    z = z2_feedback
 
             features_lat.append(z)
             if store_tensors:
@@ -292,7 +295,7 @@ def single_train_epoch(
         :param l2_opt: The optimizer for the L2-model.
         """
     feature_extractor.eval()
-    lateral_network.train()
+    lateral_network.eval()
     l2.train()
     for i, batch in tqdm(enumerate(train_loader),
                          total=len(train_loader),

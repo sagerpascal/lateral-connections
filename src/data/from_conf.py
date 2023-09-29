@@ -2,10 +2,12 @@ import os
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, TypeVar, Union
 
+import torch
 from torchvision import transforms
 from torchvision.datasets import CIFAR10, CIFAR100, ImageNet, MNIST
 
 from data.augmentation import get_image_augmentation, get_transform_pipeline
+from data.custom_datasets.eight_bit_numbers import EightBitDataset
 from data.custom_datasets.straight_line import StraightLine
 from data.loader import get_ffcv_data_loaders, get_ffcv_image_pipeline, get_ffcv_label_pipeline, \
     get_torch_data_loaders
@@ -32,6 +34,11 @@ def _get_dataset(
         train_set = MNIST(root=dataset_path, transform=transform, **dataset_config['train_dataset_params'])
         valid_set = None
         test_set = MNIST(root=dataset_path, transform=transform, **dataset_config['test_dataset_params'])
+    elif dataset_name == "mnist-subset":
+        transform = transforms.Compose([transforms.ToTensor(), transforms.Pad(2)])
+        train_set = torch.utils.data.Subset(MNIST(root=dataset_path, transform=transform, **dataset_config['test_dataset_params']), list(range(500)))
+        valid_set = None
+        test_set = torch.utils.data.Subset(MNIST(root=dataset_path, transform=transform, **dataset_config['test_dataset_params']), [1, 2, 3, 4, 5])
     elif dataset_name == "cifar10":
         train_set = CIFAR10(root=dataset_path, transform=transform, **dataset_config['train_dataset_params'])
         valid_set = None
@@ -44,10 +51,14 @@ def _get_dataset(
         train_set = ImageNet(root=dataset_path, transform=transform, **dataset_config['train_dataset_params'])
         valid_set = ImageNet(root=dataset_path, transform=transform, **dataset_config['valid_dataset_params'])
         test_set = ImageNet(root=dataset_path, transform=transform, **dataset_config['test_dataset_params'])
-    elif dataset_name == "straightline":
+    elif dataset_name == "straightline" or dataset_name == "straightline-simple":
         train_set = StraightLine(transform=transform, **dataset_config['train_dataset_params'])
         valid_set = StraightLine(transform=transform, **dataset_config['valid_dataset_params'])
         test_set = StraightLine(transform=transform, **dataset_config['test_dataset_params'])
+    elif dataset_name == "eight_bit_numbers":
+        train_set = EightBitDataset(transform=transform, **dataset_config['train_dataset_params'])
+        valid_set = EightBitDataset(transform=transform, **dataset_config['valid_dataset_params'])
+        test_set = EightBitDataset(transform=transform, **dataset_config['test_dataset_params'])
     else:
         raise ValueError("Unknown dataset name: {}".format(dataset_name))
 

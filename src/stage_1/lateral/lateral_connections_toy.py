@@ -34,6 +34,9 @@ class LateralLayer(nn.Module):
                  hebbian_rule: Optional[HEBBIAN_ALGO] = 'vanilla',
                  neg_corr: Optional[bool] = False,
                  act_threshold: Optional[Union[Literal["bernoulli"] | float]] = "bernoulli",
+                 square_factor: Optional[float] = 1.2,
+                 support_factor: Optional[float] = 1.3,
+                 n_alternative_cells: Optional[int] = 1,
                  ):
         """
         Lateral Layer trained with Hebbian Learning. The input and output of this layer are binary.
@@ -67,6 +70,7 @@ class LateralLayer(nn.Module):
         """
         super().__init__()
         self.fabric = fabric
+        self.n_alternative_cells = n_alternative_cells
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.locality_size = locality_size
@@ -76,6 +80,9 @@ class LateralLayer(nn.Module):
         self.hebbian_rule = hebbian_rule
         self.neg_corr = neg_corr
         self.act_threshold = act_threshold
+        self.mask = None
+        self.square_factor = square_factor
+        self.support_factor = support_factor
 
         assert self.hebbian_rule in ['vanilla'], \
             f"hebbian_rule must be 'vanilla', but is {self.hebbian_rule}"
@@ -83,7 +90,7 @@ class LateralLayer(nn.Module):
             f"act_threshold must be either 'bernoulli' or a float, but is {self.act_threshold}"
 
         self.W_rearrange = self._init_rearrange_weights()
-        self.W_lateral = nn.Parameter(self._init_lateral_weights())
+        self.W_lateral = nn.Parameter(self._init_lateral_weights(), requires_grad=False)
         self.ts = 0
         self.x_lateral_norm_prev = None
 
@@ -156,14 +163,37 @@ class LateralLayer(nn.Module):
         W_lateral = torch.zeros((self.out_channels, self.in_channels * self.kernel_size[0] * self.kernel_size[1], 1, 1),
                                 device=self.fabric.device, requires_grad=False)
 
-        for co in range(self.out_channels):
-            for ci in range(self.in_channels):
-                if ci == co or ci + 4 == co:
-                    cii = ci * self.kernel_size[0] * self.kernel_size[1] + self.locality_size * self.kernel_size[
-                        1] + self.locality_size
-                    W_lateral[co, cii, 0, 0] = 1
+        if self.n_alternative_cells <= 1:  # TODO: is this if/else still necessary?
+            for co in range(self.out_channels):
+                for ci in range(self.in_channels):
+                    if ci == co or ci + 4 == co:
+                        cii = ci * self.kernel_size[0] * self.kernel_size[1] + self.locality_size * self.kernel_size[
+                            1] + self.locality_size
+                        W_lateral[co, cii, 0, 0] = 1
+
+        else:
+            for co in range(self.out_channels):
+                for ci in range(self.in_channels):
+                    if (ci < 4 and co // self.n_alternative_cells == ci) or ci == co + 4:
+                        cii = ci * self.kernel_size[0] * self.kernel_size[1] + self.locality_size * self.kernel_size[
+                            1] + self.locality_size
+                        W_lateral[co, cii, 0, 0] = 1
 
         return W_lateral
+
+    def calculate_correlations(self, x: Tensor, y: Tensor) -> Tuple[Tensor, Tensor]:
+        assert torch.all((x == 0.) | (x == 1.)), "x not binary"
+        assert torch.all((y == 0.) | (y == 1.)), "y not binary"
+        x_v = x.permute(0, 2, 3, 1).reshape(-1, 1, x.shape[1])
+        y_v = y.permute(0, 2, 3, 1).reshape(-1, y.shape[1], 1)
+        pos_co_activation = torch.matmul(y_v, x_v)
+        assert torch.all(pos_co_activation >= 0) and torch.all(pos_co_activation <= 1), "pos_co_activation not in [0,1]"
+        neg_co_activation = torch.matmul(y_v, 1 - x_v) + torch.matmul(1 - y_v, x_v)
+        assert torch.all(neg_co_activation >= 0.) and torch.all(
+            neg_co_activation <= 1), "neg_co_activation not in [0,1]"
+        assert not torch.any(
+            (pos_co_activation > 0) * (neg_co_activation > 0)), "pos_co_activation and neg_co_activation overlap"
+        return pos_co_activation, neg_co_activation
 
     def hebbian_update(self, x: Tensor, y: Tensor):
         """
@@ -171,19 +201,7 @@ class LateralLayer(nn.Module):
         :param x: Input tensor of shape (batch_size, in_channels * kernel_size[0] * kernel_size[1], height, width).
         :param y: Output tensor of shape (batch_size, out_channels, height, width).
         """
-        # assert False, "Not implemented yet"
-        assert torch.all((x == 0.) | (x == 1.)), "x not binary"
-        assert torch.all((y == 0.) | (y == 1.)), "y not binary"
-        x_v = x.permute(0, 2, 3, 1).reshape(-1, 1, x.shape[1])
-        y_v = y.permute(0, 2, 3, 1).reshape(-1, y.shape[1], 1)
-        pos_co_activation = torch.matmul(y_v, x_v)
-        assert torch.all(pos_co_activation >= 0) and torch.all(pos_co_activation <= 1), "pos_co_activation not in [0,1]"
-        if self.neg_corr:
-            neg_co_activation = torch.matmul(y_v, 1 - x_v) + torch.matmul(1 - y_v, x_v)
-            assert torch.all(neg_co_activation >= 0.) and torch.all(
-                neg_co_activation <= 1), "neg_co_activation not in [0,1]"
-            assert not torch.any(
-                (pos_co_activation > 0) * (neg_co_activation > 0)), "pos_co_activation and neg_co_activation overlap"
+        pos_co_activation, neg_co_activation = self.calculate_correlations(x, y)
 
         if self.hebbian_rule == "vanilla":
             if self.neg_corr:
@@ -191,20 +209,15 @@ class LateralLayer(nn.Module):
             else:
                 update = torch.mean(pos_co_activation, dim=0)
 
-            # TODO: is this normalization necessary?
-            # update.reshape((self.out_channels, self.in_channels) + self.kernel_size)
-            # why is there a value somwhere expect the diagonal??
             update = torch.where(update > 0., update, 0.)
             update = (update - update.min()) / (update.max() - update.min() + 1e-10)
-            updated_weights = torch.where(update.reshape((self.out_channels, self.in_channels) + self.kernel_size) > 0)
-            # if len(torch.where((updated_weights[0] != updated_weights[1]) & ((4+updated_weights[0]) !=
-            # updated_weights[1]))[0]) > 0:
-            #    print("updated_weights not diagonal")
 
             self.W_lateral.data += self.lr * update.view(self.W_lateral.shape)
             self.W_lateral.data = torch.clip(self.W_lateral.data, 0., 1.)
-            self.W_lateral.data = self.W_lateral.data / (1e-10 + .2 * torch.sqrt(
-                torch.sum(self.W_lateral.data ** 2, dim=[1, 2, 3], keepdim=True)))  # Weight normalization
+
+            if self.n_alternative_cells <= 1:
+                self.W_lateral.data = self.W_lateral.data / (1e-10 + .2 * torch.sqrt(
+                    torch.sum(self.W_lateral.data ** 2, dim=[1, 2, 3], keepdim=True)))  # Weight normalization
         else:
             raise NotImplementedError(f"Hebbian rule {self.hebbian_rule} not implemented.")
 
@@ -212,44 +225,132 @@ class LateralLayer(nn.Module):
         with torch.no_grad():
             x_rearranged = self.rearrange_input(x)
 
-            # TODO: What happens if we set the actual input =0 during training and timestep > 0? -> we could try
-
-            assert torch.all((x_rearranged == 0.) | (x_rearranged == 1.)), "x_rearranged not binary"
-            x_lateral = F.conv2d(x_rearranged, self.W_lateral, padding="same")
+            assert torch.all((x_rearranged == 0.) | (x_rearranged == 1.)), "x_rearranged not binary -> Torch Config Error"
+            x_lateral = F.conv2d(x_rearranged, self.W_lateral, padding="same", )
 
             # reduce weight at a certain point if it is too high (Inhibition)
-            min_support = self.kernel_size[0]
-            max_support = 1.3 * self.kernel_size[0]
+            max_support = self.support_factor * self.kernel_size[0]
             x_lateral_norm = torch.where(x_lateral < max_support, x_lateral, max_support - .5 * (x_lateral - max_support))
-
-            # Normalize by dividing through the max. possible activation (if all weights were 1)
-            # x_max_act = F.conv2d(x_rearranged, torch.ones_like(self.W_lateral.data), padding="same")
-            # x_max_act = torch.where(x_max_act < min_support, min_support, x_max_act)
-            # x_max_act = torch.where(x_max_act > max_support, max_support, x_max_act)
-            # x_lateral_norm = x_lateral / x_max_act
 
             # Normalize by dividing through the sum of the weights
             x_lateral_norm = x_lateral_norm / (1e-10 + torch.sum(self.W_lateral.data, dim=(1, 2, 3)).view(1, -1, 1, 1))
 
-            if self.ts > 0:
-                x_lateral_norm = (x_lateral_norm + self.ts * self.x_lateral_norm_prev) / (self.ts + 1)
-            self.x_lateral_norm_prev = x_lateral_norm
+            # TODO: Is the code below necessary?
+            # if self.ts > 0:
+            #     x_lateral_norm = (x_lateral_norm + self.ts * self.x_lateral_norm_prev) / (self.ts + 1)
+            # self.x_lateral_norm_prev = x_lateral_norm
 
-            # Bring activation in range [0, 1]
-            x_lateral_norm_s = x_lateral_norm.shape
-            x_lateral_norm /= (
-                    1e-10 + x_lateral_norm.view(-1, x_lateral_norm_s[2] * x_lateral_norm_s[3]).max(1)[0].view(
-                x_lateral_norm_s[:2] + (1, 1)))
+            if self.n_alternative_cells <= 1:  # TODO: is this if/else necessary?
+                # Bring activation in range [0, 1]
+                x_lateral_norm_s = x_lateral_norm.shape
+                x_lateral_norm /= (
+                        1e-10 + x_lateral_norm.view(-1, x_lateral_norm_s[2] * x_lateral_norm_s[3]).max(1)[0].view(
+                    x_lateral_norm_s[:2] + (1, 1)))
+
+            else:
+                # Normalize per alternative channel
+                x_lateral_norm_s = x_lateral_norm.shape
+                x_lateral_norm = x_lateral_norm.reshape((x_lateral_norm.shape[0],
+                                                         x_lateral_norm.shape[1] // self.n_alternative_cells,
+                                                         self.n_alternative_cells) + x_lateral_norm.shape[2:])
+                x_lateral_norm_alt_max = x_lateral_norm.view(x_lateral_norm.shape[:2] + (-1,)).max(dim=2)[0]
+                x_lateral_norm = x_lateral_norm / (
+                            1e-10 + x_lateral_norm_alt_max.reshape(x_lateral_norm_alt_max.shape + (1, 1, 1)))
+                x_lateral_norm = x_lateral_norm.reshape(x_lateral_norm_s)
 
             if self.act_threshold == "bernoulli":
-                x_lateral_bin = torch.bernoulli(torch.clip(x_lateral_norm ** 3, 0, 1))
+                x_lateral_bin = torch.bernoulli(torch.clip(x_lateral_norm ** self.square_factor, 0, 1))
             else:
-                x_lateral_bin = (x_lateral_norm ** 3 >= self.act_threshold).float()
+                x_lateral_bin = (x_lateral_norm ** self.square_factor >= self.act_threshold).float()
 
-            # TODO:
-            # if self.training and self.ts == 4:
-            # if self.training:
-            #     self.hebbian_update(x_rearranged, x_lateral_bin)
+            if self.n_alternative_cells > 1:
+                # Set some channels == 0
+
+                if self.ts == 0:
+
+                    assert x_lateral_bin.shape[0] == 1, "only works with batch size = 1 atm."
+
+                    # Shape w2: 5324, 40, 1
+                    # Shape x2: 5324, 1, 1024
+                    d2 = self.in_channels * self.kernel_size[0] * self.kernel_size[1]
+                    w2 = (self.W_lateral.reshape(40, d2, 1).permute(1, 0, 2) > 0).float()
+                    x2 = x_rearranged.reshape(d2, 1, 1024).permute(0, 1, 2)
+                    pos_corr3 = torch.matmul(w2, x2)  # 40,5324,1 * 40,1,1024
+                    neg_corr3 = torch.matmul(w2, 1 - x2) + torch.matmul(1 - w2, x2)
+                    pos_corr3 = pos_corr3.permute(2, 1, 0).reshape(1024, 4, 10, d2)
+                    neg_corr3 = neg_corr3.permute(2, 1, 0).reshape(1024, 4, 10, d2)
+
+                    pos_corr = pos_corr3
+                    neg_corr = neg_corr3
+
+                    # correlation shape: (batch_size*H*W, out_channels, alt_channels, in_channels*kernel_w*kernel_h)
+                    # Goal for every position in the channel 0, one of the alternative output channels should be active
+                    pos_corr_avg = torch.mean(pos_corr, dim=-1)
+                    neg_corr_avg = torch.mean(neg_corr, dim=-1)
+                    pos_neg_corr_avg = torch.mean(pos_corr - neg_corr, dim=-1)
+
+                    # just some plots for debugging
+                    pos_corr_avg_plot = torch.argmax(pos_corr_avg.permute(1, 2, 0), dim=1).reshape(-1, 32*32)
+                    neg_corr_avg_plot = torch.argmax(neg_corr_avg.permute(1, 2, 0), dim=1).reshape(-1, 32*32)
+                    neg_corr_avg_plotn = torch.argmin(neg_corr_avg.permute(1, 2, 0), dim=1).reshape(-1, 32 * 32)
+                    pos_neg_corr_avg_plot = torch.argmax(pos_neg_corr_avg.permute(1, 2, 0), dim=1).reshape(-1, 32*32)
+
+                    plot = False
+                    if plot:
+                        fig, ax = plt.subplots(4, 4, figsize=(15, 15))
+                        for i in range(4):
+                            pos_corr_avg_plott = pos_corr_avg_plot[i].reshape(32, 32).cpu().numpy()
+                            neg_corr_avg_plott = neg_corr_avg_plot[i].reshape(32, 32).cpu().numpy()
+                            neg_corr_avg_plotnt = neg_corr_avg_plotn[i].reshape(32, 32).cpu().numpy()
+                            pos_neg_corr_avg_plott = pos_neg_corr_avg_plot[i].reshape(32, 32).cpu().numpy()
+                            im = ax[i, 0].imshow(pos_corr_avg_plott, vmin=0, vmax=9, cmap="tab10")
+                            im2 = ax[i, 1].imshow(neg_corr_avg_plott, vmin=0, vmax=9, cmap="tab10")
+                            im3 = ax[i, 2].imshow(neg_corr_avg_plotnt, vmin=0, vmax=9, cmap="tab10")
+                            im4 = ax[i, 3].imshow(pos_neg_corr_avg_plott, vmin=0, vmax=9, cmap="tab10")
+                            plt.colorbar(im, ax=ax[i, 0])
+                            plt.colorbar(im2, ax=ax[i, 1])
+                            plt.colorbar(im3, ax=ax[i, 2])
+                            plt.colorbar(im4, ax=ax[i, 3])
+                            ax[i, 0].set_title("Alt. Channel with highest pos. correlation")
+                            ax[i, 1].set_title("Alt. Channel with highest neg. correlation")
+                            ax[i, 2].set_title("Alt. Channel with lowest neg. correlation")
+                            ax[i, 3].set_title("Alt. Channel with highest pos. - neg correlation")
+                        plt.tight_layout()
+                        plt.show()
+
+                        pos_corr_avg_plot = torch.max(pos_corr_avg.permute(1, 2, 0), dim=1)[0].reshape(-1, 32 * 32)
+                        neg_corr_avg_plot = torch.max(neg_corr_avg.permute(1, 2, 0), dim=1)[0].reshape(-1, 32 * 32)
+                        pos_neg_corr_avg_plot = torch.max(pos_neg_corr_avg.permute(1, 2, 0), dim=1)[0].reshape(-1, 32 * 32)
+                        fig, ax = plt.subplots(4, 3, figsize=(15, 15))
+                        for i in range(4):
+                            pos_corr_avg_plott = pos_corr_avg_plot[i].reshape(32, 32).cpu().numpy()
+                            neg_corr_avg_plott = neg_corr_avg_plot[i].reshape(32, 32).cpu().numpy()
+                            pos_neg_corr_avg_plott = pos_neg_corr_avg_plot[i].reshape(32, 32).cpu().numpy()
+                            im = ax[i, 0].imshow(pos_corr_avg_plott, cmap="jet")
+                            im2 = ax[i, 1].imshow(neg_corr_avg_plott, cmap="jet")
+                            im3 = ax[i, 2].imshow(pos_neg_corr_avg_plott, cmap="jet")
+                            plt.colorbar(im, ax=ax[i, 0])
+                            plt.colorbar(im2, ax=ax[i, 1])
+                            plt.colorbar(im3, ax=ax[i, 2])
+                            ax[i, 0].set_title("Highest pos. correlation")
+                            ax[i, 1].set_title("Highest neg. correlation")
+                            ax[i, 2].set_title("Highest pos. - neg correlation")
+                        plt.tight_layout()
+                        plt.show()
+
+                    best_channel = torch.argmax(pos_neg_corr_avg, dim=2)
+                    best_channel = best_channel.reshape((x_lateral_bin.shape[0], ) + x_lateral_bin.shape[2:] + (-1, ))
+
+                    x_lateral_bin_reshaped = x_lateral_bin.reshape((x_lateral_bin.shape[0], x_lateral_bin.shape[1] // self.n_alternative_cells, self.n_alternative_cells) + x_lateral_bin.shape[2:]).permute(0, 3, 4, 1, 2)
+                    self.mask = (torch.arange(0, 10).view(1, 1, 1, 1, -1).cuda() == best_channel.unsqueeze(-1))
+                    assert torch.all(torch.sum(self.mask, dim=4) == 1)
+
+                else:
+                    x_lateral_bin_reshaped = x_lateral_bin.reshape((x_lateral_bin.shape[0], x_lateral_bin.shape[1] // self.n_alternative_cells, self.n_alternative_cells) + x_lateral_bin.shape[2:]).permute(0, 3, 4, 1, 2)
+
+                x_lateral_bin_reshaped = x_lateral_bin_reshaped * self.mask
+                x_lateral_bin = x_lateral_bin_reshaped.detach().permute(0, 3, 4, 1, 2).reshape(x_lateral_bin.shape)
+
 
             stats = {
                 "l1/avg_support_active": x_lateral[x_lateral_bin > 0].mean().item(),
@@ -267,8 +368,6 @@ class LateralLayer(nn.Module):
                 "l1/norm_factor": torch.mean(x_lateral / (1e-10 + x_lateral_norm)).item()
             }
 
-            x_lateral /= x_lateral.view(-1, x_lateral_norm_s[2] * x_lateral_norm_s[3]).max(1)[0].view(
-                x_lateral_norm_s[:2] + (1, 1))
             return x_lateral_norm, x_lateral_bin, stats
 
 class LateralLayerEfficientNetwork1L(nn.Module):
@@ -289,7 +388,7 @@ class LateralLayerEfficientNetwork1L(nn.Module):
         self.avg_value_meter = {}
 
         lm_conf = self.conf["lateral_model"]
-        self.out_channels = self.conf["lateral_model"]["channels"]
+        self.out_channels = self.conf["lateral_model"]["channels"] * conf['alternative_cells']
         self.in_channels = self.conf["feature_extractor"]["out_channels"] + self.out_channels
         if self.conf["feature_extractor"]["add_bg_channel"]:
             self.in_channels += 1
@@ -304,6 +403,7 @@ class LateralLayerEfficientNetwork1L(nn.Module):
             self.fabric,
             in_channels=self.in_channels,
             out_channels=self.out_channels,
+            n_alternative_cells=conf["n_alternative_cells"],
             **lm_conf["l1_params"],
         )
 
@@ -324,8 +424,8 @@ class LateralLayerEfficientNetwork1L(nn.Module):
         extractor), Features extracted by the lateral layers (binarized), Features extracted by the lateral layers (as
         float)
         """
-        # TODO: New
-        act, act_bin, logs = self.l1(x)
+        with torch.no_grad():
+            act, act_bin, logs = self.l1(x)
         for k, v in logs.items():
             if k not in self.avg_value_meter:
                 self.avg_value_meter[k] = AverageMeter()

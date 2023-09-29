@@ -16,7 +16,7 @@ from tools import torch_optim_from_conf
 
 
 class RBM(nn.Module):
-    def __init__(self, n_visible=4 * 32 * 32, n_hidden=16, k=5):
+    def __init__(self, n_visible, n_hidden, k):
         """Create a RBM."""
         super(RBM, self).__init__()
         self.v = nn.Parameter(torch.randn(1, n_visible))
@@ -77,7 +77,8 @@ class L2RBM(BaseLitModule):
         :param fabric: Fabric instance.
         """
         super().__init__(conf, fabric, logging_prefixes=["l2/train", "l2/val"])
-        self.model = self.configure_model()
+        self.conf = conf
+        self.model = self.configure_model(conf)
 
     def forward(self, x: Tensor) -> Tensor:
         """
@@ -91,8 +92,8 @@ class L2RBM(BaseLitModule):
         # loss = self.model.free_energy_hidden(pt) - self.model.free_energy_hidden(pt2)
         v, v_gibb, h = self.forward(x)
         loss = self.model.free_energy(v) - self.model.free_energy(v_gibb)
-        v = v.reshape(-1, 4, 32, 32)
-        v_gibb = v_gibb.reshape(-1, 4, 32, 32)
+        v = v.reshape(-1, self.conf['lateral_model']['channels'] * self.conf['alternative_cells'], self.conf['data']['img_width'], self.conf['data']['img_height'])
+        v_gibb = v_gibb.reshape(-1, self.conf['lateral_model']['channels'] * self.conf['alternative_cells'], self.conf['data']['img_width'], self.conf['data']['img_height'])
         self.log_step(processed_values={"loss": loss}, metric_pairs=[(v, v_gibb)], prefix=log_prefix)
         return v, v_gibb, h, loss
 
@@ -102,12 +103,14 @@ class L2RBM(BaseLitModule):
     def eval_step(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
         return self.step(x, "l2/val")
 
-    def configure_model(self) -> nn.Module:
+    def configure_model(self, conf: Dict[str, Optional[Any]]) -> nn.Module:
         """
         Configure (create instance) the model.
+        :param conf: Configuration dictionary.
         :return: A torch model.
         """
-        return RBM()
+        n_visible = conf['lateral_model']['channels'] * conf['data']['img_width'] * conf['data']['img_height'] * conf['alternative_cells']
+        return RBM(n_visible=n_visible, n_hidden=conf['l2']['n_hidden'], k=conf['l2']['k'])
 
     def configure_optimizers(self) -> Tuple[Optimizer, Optional[ReduceLROnPlateau]]:
         """

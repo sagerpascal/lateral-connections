@@ -19,10 +19,9 @@ class StraightLine(Dataset):
                  num_channels: Literal[1, 3] = 1,
                  aug_range: Optional[int] = 2,
                  vertical_horizontal_only: Optional[bool] = False,
-                 fixed_lines_eval_test: Optional[bool] = False,
                  noise: Optional[float] = 0.,
                  aug_strategy: Optional[str] = 'random',
-                 n_black_pixels: Optional[int] = 0,
+                 n_black_pixels: Optional[int] = 1,
                  transform: Optional[Callable] = None):
         """
         Dataset that generates images with a straight line.
@@ -32,7 +31,6 @@ class StraightLine(Dataset):
         :param num_aug_versions: Number of similar versions of each image to generate.
         :param num_channels: Number of channels of the images (1 for grayscale, 3 for RGB).
         :param vertical_horizontal_only: Whether to only generate vertical and horizontal lines.
-        :param fixed_lines_eval_test: Whether to use fixed lines for the evaluation and test sets.
         :param noise: The amount of noise to add to the image (i.e. probability to set some pixels to 1).
         :param aug_strategy: The strategy to use for creating different image views. Can be 'random' or 'trajectory'.
         :param n_black_pixels: The number of black pixels to add to the image.
@@ -50,7 +48,6 @@ class StraightLine(Dataset):
         self.num_aug_versions = num_aug_versions
         self.num_channels = num_channels
         self.vertical_horizontal_only = vertical_horizontal_only
-        self.fixed_lines_eval_test = fixed_lines_eval_test
         self.noise = noise
         self.aug_strategy = aug_strategy
         self.transform = transform
@@ -75,43 +72,30 @@ class StraightLine(Dataset):
         :param idx: Index of the image.
         :return: a Tuple of two Tuples of x,y coordinates.
         """
-        # TODO: Delete this (always the same 2 lines)
-        if idx % 4 == 0:
-            return (2, 16), (30, 16)
-        elif idx % 4 == 1:
-            return (16, 2), (16, 30)
-        elif idx % 4 == 2:
-            return (2, 2), (30, 30)
-        elif idx % 4 == 3:
-            return (2, 30), (30, 2)
-
-        # encourage longer lines
-        x1 = random.randint(0, self.img_w // 2)
-        y1 = random.randint(0, self.img_h // 2)
-        x2 = random.randint(self.img_w // 2, self.img_w)
-        y2 = random.randint(self.img_h // 2, self.img_h)
-        if random.random() < 0.5:
-            x1, x2 = x2, x1
-        if random.random() < 0.5:
-            y1, y2 = y2, y1
-
         if self.vertical_horizontal_only:
+            if idx % 4 == 0:
+                return (2, 16), (30, 16)
+            elif idx % 4 == 1:
+                return (16, 2), (16, 30)
+            elif idx % 4 == 2:
+                return (2, 2), (30, 30)
+            elif idx % 4 == 3:
+                return (2, 30), (30, 2)
+
+        else:
             if random.random() < 0.5:
-                y1 = y2
+                x1 = 2
+                x2 = 30
+                y1 = random.randint(2, 30)
+                y2 = 32 - y1
             else:
-                x1 = x2
+                y1 = 2
+                y2 = 30
+                x1 = random.randint(2, 30)
+                x2 = 32 - x1
 
-        if self.fixed_lines_eval_test and (self.split == 'val' or self.split == 'test'):
-            if idx == 0:
-                x1, x2, y1, y2 = self.img_w // 2, self.img_w // 2, 5, self.img_h - 5
-            elif idx == 1:
-                x1, x2, y1, y2 = 5, self.img_w - 5, self.img_h // 2, self.img_h // 2
-            elif idx == 2:
-                x1, x2, y1, y2 = 5, self.img_w - 5, 5, self.img_h - 5
-            elif idx == 3:
-                x1, x2, y1, y2 = 5, self.img_w - 5, self.img_h - 5, 5
+            return (x1, y1), (x2, y2)
 
-        return (x1, y1), (x2, y2)
 
     def _slightly_change_line_coords_random(self, coords: Tuple[Tuple[int, int], Tuple[int, int]]
                                             ) -> Tuple[Tuple[int, int], Tuple[int, int]]:
@@ -244,7 +228,7 @@ class StraightLine(Dataset):
             aug_strategy: Optional[str] = None,
             line_coords: Optional[Tuple[Tuple[int, int], Tuple[int, int]]] = None,
             noise: Optional[float] = None,
-            n_black_pixels: Optional[int] = 0
+            n_black_pixels: Optional[int] = 0,
     ):
         """
         Returns an image with a random straight line drawn on it.
@@ -293,7 +277,7 @@ def _plot_some_samples():
     ])
 
     dataset = StraightLine(split="test", img_h=32, img_w=32, num_images=12, num_aug_versions=9, num_channels=1,
-                           transform=transform, vertical_horizontal_only=True, fixed_lines_eval_test=True, noise=0.00,
+                           transform=transform, vertical_horizontal_only=True, noise=0.00,
                            aug_strategy='trajectory', aug_range=15, n_black_pixels=5)
 
     fig, axs = plt.subplots(12, 10, figsize=(10, 12))

@@ -49,6 +49,22 @@ mnist:
     train: False
     download: True
 
+  mnist-subset:
+    dir: mnist/
+    beton_dir: beton/mnist/
+    mean: [ 0.1307 ]
+    std: [ 0.3081 ]
+    num_classes: 10
+    num_channels: 1
+    img_width: 28
+    img_height: 28
+    train_dataset_params:
+      train: True
+      download: True
+    test_dataset_params:
+      train: False
+      download: True
+
 imagenet:
   dir: imagenet/
   beton_dir: beton/imagenet/
@@ -66,7 +82,7 @@ imagenet:
     split: "test"
     download: True
 
-straightline:
+straightline-simple:
   num_channels: 1
   mean: [ 0. ]
   std: [ 1. ]
@@ -76,24 +92,65 @@ straightline:
     split: "train"
     vertical_horizontal_only: True
     aug_range: 0
-    num_images: 3000
+    num_images: 300
     num_aug_versions: 0
   valid_dataset_params:
     split: "val"
     vertical_horizontal_only: True
     aug_range: 0
-    fixed_lines_eval_test: True
-    num_images: 2
+    num_images: 4
     num_aug_versions: 0
     noise: 0.0
   test_dataset_params:
     split: "test"
     vertical_horizontal_only: True
     aug_range: 0
-    fixed_lines_eval_test: True
-    num_images: 2
+    num_images: 4
     num_aug_versions: 0
     noise: 0.0
+
+  straightline:
+    num_channels: 1
+    mean: [ 0. ]
+    std: [ 1. ]
+    img_width: 32
+    img_height: 32
+    train_dataset_params:
+      split: "train"
+      vertical_horizontal_only: False
+      aug_range: 0
+      num_images: 300
+      num_aug_versions: 0
+    valid_dataset_params:
+      split: "val"
+      vertical_horizontal_only: False
+      aug_range: 0
+      num_images: 4
+      num_aug_versions: 0
+      noise: 0.0
+    test_dataset_params:
+      split: "test"
+      vertical_horizontal_only: False
+      aug_range: 0
+      num_images: 4
+      num_aug_versions: 0
+      noise: 0.0
+
+eight_bit_numbers:
+  num_channels: 1
+  mean: [ 0. ]
+  std: [ 1. ]
+  img_width: 32
+  img_height: 32
+  train_dataset_params:
+    samples_per_class: 50
+    include_noise: False
+  valid_dataset_params:
+    samples_per_class: 1
+    include_noise: False
+  test_dataset_params:
+    samples_per_class: 1
+    include_noise: False
 
 augmentation_v1:
   aug1:
