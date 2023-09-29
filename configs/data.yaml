@@ -49,6 +49,22 @@ mnist:
     train: False
     download: True
 
+  mnist-subset:
+    dir: mnist/
+    beton_dir: beton/mnist/
+    mean: [ 0.1307 ]
+    std: [ 0.3081 ]
+    num_classes: 10
+    num_channels: 1
+    img_width: 28
+    img_height: 28
+    train_dataset_params:
+      train: True
+      download: True
+    test_dataset_params:
+      train: False
+      download: True
+
 imagenet:
   dir: imagenet/
   beton_dir: beton/imagenet/
@@ -76,7 +92,7 @@ straightline:
     split: "train"
     vertical_horizontal_only: True
     aug_range: 0
-    num_images: 600
+    num_images: 300
     num_aug_versions: 0
   valid_dataset_params:
     split: "val"

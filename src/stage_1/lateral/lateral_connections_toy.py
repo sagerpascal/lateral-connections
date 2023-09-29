@@ -35,6 +35,7 @@ class LateralLayer(nn.Module):
                  neg_corr: Optional[bool] = False,
                  act_threshold: Optional[Union[Literal["bernoulli"] | float]] = "bernoulli",
                  square_factor: Optional[float] = 1.2,
+                 support_factor: Optional[float] = 1.3,
                  ):
         """
         Lateral Layer trained with Hebbian Learning. The input and output of this layer are binary.
@@ -79,7 +80,8 @@ class LateralLayer(nn.Module):
         self.neg_corr = neg_corr
         self.act_threshold = act_threshold
         self.mask = None
-        self.sf = square_factor
+        self.square_factor = square_factor
+        self.support_factor = support_factor
 
         assert self.hebbian_rule in ['vanilla'], \
             f"hebbian_rule must be 'vanilla', but is {self.hebbian_rule}"
@@ -225,7 +227,7 @@ class LateralLayer(nn.Module):
 
             # reduce weight at a certain point if it is too high (Inhibition)
             min_support = self.kernel_size[0]
-            max_support = 1.3 * self.kernel_size[0]
+            max_support = self.support_factor * self.kernel_size[0]
             x_lateral_norm = torch.where(x_lateral < max_support, x_lateral, max_support - .5 * (x_lateral - max_support))
 
             # Normalize by dividing through the max. possible activation (if all weights were 1)
@@ -255,9 +257,9 @@ class LateralLayer(nn.Module):
             x_lateral_norm = x_lateral_norm.reshape(x_lateral_norm_s)
 
             if self.act_threshold == "bernoulli":
-                x_lateral_bin = torch.bernoulli(torch.clip(x_lateral_norm ** self.sf, 0, 1))
+                x_lateral_bin = torch.bernoulli(torch.clip(x_lateral_norm ** self.square_factor, 0, 1))
             else:
-                x_lateral_bin = (x_lateral_norm ** self.sf >= self.act_threshold).float()
+                x_lateral_bin = (x_lateral_norm ** self.square_factor >= self.act_threshold).float()
 
             # TODO:
             # if self.training and self.ts == 4:
@@ -292,12 +294,13 @@ class LateralLayer(nn.Module):
 
                 # Shape w2: 5324, 40, 1
                 # Shape x2: 5324, 1, 1024
-                w2 = (self.W_lateral.reshape(40, 5324, 1).permute(1, 0, 2) > 0).float()
-                x2 = x_rearranged.reshape(5324, 1, 1024).permute(0, 1, 2)
+                d2 = self.in_channels * self.kernel_size[0] * self.kernel_size[1]
+                w2 = (self.W_lateral.reshape(40, d2, 1).permute(1, 0, 2) > 0).float()
+                x2 = x_rearranged.reshape(d2, 1, 1024).permute(0, 1, 2)
                 pos_corr3 = torch.matmul(w2, x2)  # 40,5324,1 * 40,1,1024
                 neg_corr3 = torch.matmul(w2, 1 - x2) + torch.matmul(1 - w2, x2)
-                pos_corr3 = pos_corr3.permute(2, 1, 0).reshape(1024, 4, 10, 5324)
-                neg_corr3 = neg_corr3.permute(2, 1, 0).reshape(1024, 4, 10, 5324)
+                pos_corr3 = pos_corr3.permute(2, 1, 0).reshape(1024, 4, 10, d2)
+                neg_corr3 = neg_corr3.permute(2, 1, 0).reshape(1024, 4, 10, d2)
 
                 pos_corr = pos_corr3
                 neg_corr = neg_corr3

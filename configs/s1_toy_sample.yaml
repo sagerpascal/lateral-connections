@@ -75,3 +75,4 @@ lateral_model:
     neg_corr: True
     act_threshold: 0.5  # 'bernoulli'
     square_factor: 1.2
+    support_factor: 1.3
