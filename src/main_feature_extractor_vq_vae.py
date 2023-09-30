@@ -13,7 +13,7 @@ from tqdm import tqdm
 
 from data import loaders_from_config
 from models import BaseLitModule
-from stage_1.feature_extractor import VQVAEFeatureExtractorImageMode, VQVAEFeatureExtractorPatchMode
+from lateral_connections.feature_extractor import VQVAEFeatureExtractorImageMode, VQVAEFeatureExtractorPatchMode
 from tools import loggers_from_conf
 from utils import get_config, print_start, print_warn
 from tools.callbacks.save_model import SaveBestModelCallback

@@ -17,17 +17,16 @@ from tqdm import tqdm
 
 from data.custom_datasets.eight_bit_numbers import EightBitDataset
 from data.custom_datasets.straight_line import StraightLine
-from s1_toy_example import configure, cycle, setup_fabric, setup_feature_extractor, setup_l2, setup_lateral_network
-from stage_1.lateral.l2_rbm import L2RBM
-from stage_1.lateral.lateral_connections_toy import LateralNetwork
+from main_lateral_connections import configure, cycle, setup_fabric, setup_feature_extractor, setup_l2, setup_lateral_network
+from lateral_connections.s2_rbm import L2RBM
+from lateral_connections.s1_lateral_connections import LateralNetwork
 from tools.store_load_run import load_run
 from utils import print_start
 
 count = 0
-dataset = "straight_line"  # eight-bit, mnist
 
-config = {
-    "n_cycles": 200,
+visu_config = {
+    "n_cycles": 88,
     "cycle_length": 1,
     "noise":
         {
@@ -47,9 +46,6 @@ config = {
             "strategy": "fixed",  # "random" or "fixed"
         }
 }
-
-if dataset == "mnist":
-    config["n_cycles"] = 88
 
 class CustomImage:
     """
@@ -277,14 +273,14 @@ def get_dataset(config: Dict[str, Any], strategy: Dict[str, Any]) -> StraightLin
     :param strategy: The strategy
     :return: SrtaightLine dataset
     """
-    if dataset == "straight_line":
+    if config['dataset']['name'].startswith("straightline"):
         return StraightLine(split="test",
                             num_images=len(strategy["line"]),
                             num_aug_versions=0,
                             )
-    elif dataset == "eight-bit":
+    elif config['dataset']['name'].startswith("eight_bit"):
         return EightBitDataset(samples_per_class=config['n_cycles'])
-    elif dataset == "mnist":
+    elif config['dataset']['name'].startswith("mnist"):
         transform = transforms.Compose([transforms.ToTensor(), transforms.Pad(2)])
         return torch.utils.data.Subset(
             MNIST(root='../data/mnist', transform=transform),
@@ -293,23 +289,25 @@ def get_dataset(config: Dict[str, Any], strategy: Dict[str, Any]) -> StraightLin
              123, 124, 125, 127, 131, 132, 133, 136, 139, 140, 141, 142, 143, 144, 145, 148, 150, 151, 152, 153, 154,
              155, 156, 158, 160, 162, 170, 174, 176, 178, 183, 186, 188, 191, 195, 196])
     else:
-        raise ValueError(f"Invalid dataset {dataset}.")
+        raise ValueError(f"Invalid dataset.")
 
-def get_data_gen(strategy: Dict[str, Any], dataset: StraightLine):
+def get_data_gen(strategy: Dict[str, Any], dataset: StraightLine, config: Dict[str, Any]) -> Iterator[Tuple[Tensor, List[Dict[str, Any]]]]:
     """
     Data generator for the given strategy and dataset
     :param strategy: The strategy
     :param dataset: The dataset
     :return: Image generator
     """
-    for i in range(config["n_cycles"] + 1):
+    for i in range(visu_config["n_cycles"] + 1):
         images, metas = [], []
-        for _ in range(config["cycle_length"]):
-            if dataset == "straight_line":
+        for _ in range(visu_config["cycle_length"]):
+            if config['dataset']['name'].startswith("straightline"):
                 img, meta = dataset.get_item(i, line_coords=strategy["line"][i], noise=strategy["noise"][i],
                                              n_black_pixels=strategy["black"][i])
-            elif dataset == "eight-bit" or dataset == "mnist":
+            elif config['dataset']['name'].startswith("eight_bit") or config['dataset']['name'].startswith("mnist"):
                 img, meta = dataset[i]
+            else:
+                raise ValueError(f"Invalid dataset.")
             images.append(img.unsqueeze(0))
             metas.append(meta)
         yield torch.vstack(images).unsqueeze(0), metas
@@ -341,14 +339,14 @@ def load_models() -> Tuple[Dict[str, Any], Fabric, pl.LightningModule, pl.Lightn
     return config, fabric, feature_extractor, lateral_network, l2
 
 
-def load_data_generator() -> Iterator[Tuple[Tensor, List[Dict[str, Any]]]]:
+def load_data_generator(config: Dict[str, Optional[Any]]) -> Iterator[Tuple[Tensor, List[Dict[str, Any]]]]:
     """
     Loads the data generator
     :return: Data generator
     """
-    strategy = get_strategy(config)
+    strategy = get_strategy(visu_config)
     dataset = get_dataset(config, strategy)
-    generator = get_data_gen(strategy, dataset)
+    generator = get_data_gen(strategy, dataset, config)
     return generator
 
 
@@ -408,11 +406,11 @@ def process_data(
     :param l2: L2 network
     :param video_fp: Video file path
     """
-    fps = 1. if dataset == "mnist" else 10.
-    frames_last = 0 if dataset == "mnist" else int(fps // 2)  # show the median activation for a longer time...
+    fps = 1. if config['dataset']['name'].startswith("mnist") else 10.
+    frames_last = 0 if config['dataset']['name'].startswith("mnist") else int(fps // 2)  # show the median activation for a longer time...
     ci = CustomImage()
     out = cv2.VideoWriter(video_fp, cv2.VideoWriter_fourcc(*'mp4v'), fps, (ci.width, ci.height))
-    for i, img in tqdm(enumerate(generator), total=config["n_cycles"] + 1):
+    for i, img in tqdm(enumerate(generator), total=visu_config["n_cycles"] + 1):
         inp_features, l1_act, l2_act, l2_h_act = predict_sample(config, fabric, feature_extractor, lateral_network, l2,
                                                                 img, i)
         for view in range(img[0].shape[1]):
@@ -432,7 +430,7 @@ def main():
     print_start("Starting python script 'changing_line_demo.py'...",
                 title="Demo Lines: Creating a Video of a Changing Line")
     config, fabric, feature_extractor, lateral_network, l2 = load_models()
-    generator = load_data_generator()
+    generator = load_data_generator(config)
     process_data(generator, config, fabric, feature_extractor, lateral_network, l2,
                  video_fp=f"../tmp/demo/{Path(config['run']['load_state_path']).name}.mp4")
 

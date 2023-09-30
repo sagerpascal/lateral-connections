@@ -2,11 +2,11 @@ dataset:
   name: straightline-simple
   augmentation: None
   loader: torch
-  batch_size: 128
+  batch_size: 32
   num_workers: 0
 
 run:
-  n_epochs: 15
+  n_epochs: 30
   current_epoch: 0
   plots:
     enable: True
@@ -62,7 +62,7 @@ feature_extractor:
   bin_threshold: 0.  # set to 0.5 to obtain better features
   optimized_filter_lines: True # set to True to obtain better features
 
-alternative_cells: 1
+n_alternative_cells: 1
 
 lateral_model:
   channels: 4
@@ -74,11 +74,11 @@ lateral_model:
     locality_size: 5
     lr: 0.2
     hebbian_rule: 'vanilla'
-    neg_corr: True
-    act_threshold: 0.45  # 'bernoulli'
-    square_factor: 1.2
+    neg_corr: False
+    act_threshold: 0.5  # 'bernoulli'
+    square_factor: 3
     support_factor: 1.3
 
-  l2:
-    k: 5
-    n_hidden: 16
+l2:
+  k: 5
+  n_hidden: 16

@@ -15,9 +15,9 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from data import loaders_from_config
-from stage_1.feature_extractor.straight_line_pl_modules import FixedFilterFeatureExtractor
-from stage_1.lateral.l2_rbm import L2RBM
-from stage_1.lateral.lateral_connections_toy import LateralNetwork
+from lateral_connections.feature_extractor.straight_line_pl_modules import FixedFilterFeatureExtractor
+from lateral_connections.s2_rbm import L2RBM
+from lateral_connections.s1_lateral_connections import LateralNetwork
 from tools import loggers_from_conf
 from tools.store_load_run import load_run, save_run
 from utils import get_config, print_start, print_warn
@@ -72,24 +72,6 @@ def parse_args(parser: Optional[argparse.ArgumentParser] = None):
                         type=str,
                         dest='run:plots:store_path',
                         help='Store the plotted results in the given path'
-                        )
-    parser.add_argument("--train_noise",
-                        type=float,
-                        # default=0.,
-                        dest="dataset:train_dataset_params:noise",
-                        help="The noise added to the training data (default: 0.)"
-                        )
-    parser.add_argument("--valid_noise",
-                        type=float,
-                        # default=0.005,
-                        dest="dataset:valid_dataset_params:noise",
-                        help="The noise added to the validation data (default: 0.005)"
-                        )
-    parser.add_argument("--test_noise",
-                        type=float,
-                        # default=0.005,
-                        dest="dataset:test_dataset_params:noise",
-                        help="The noise added to the test data (default: 0.005)"
                         )
     parser.add_argument('--store',
                         type=str,
@@ -444,7 +426,7 @@ def main():
     """
     Run the model: Create modules, extract features from images and run the model leveraging lateral connections.
     """
-    print_start("Starting python script 's1_toy_example.py'...",
+    print_start("Starting python script 'main_lateral_connections.py'...",
                 title="Training S1: Lateral Connections Toy Example")
     config = configure()
     fabric = setup_fabric(config)

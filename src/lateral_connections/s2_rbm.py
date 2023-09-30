@@ -92,8 +92,8 @@ class L2RBM(BaseLitModule):
         # loss = self.model.free_energy_hidden(pt) - self.model.free_energy_hidden(pt2)
         v, v_gibb, h = self.forward(x)
         loss = self.model.free_energy(v) - self.model.free_energy(v_gibb)
-        v = v.reshape(-1, self.conf['lateral_model']['channels'] * self.conf['alternative_cells'], self.conf['data']['img_width'], self.conf['data']['img_height'])
-        v_gibb = v_gibb.reshape(-1, self.conf['lateral_model']['channels'] * self.conf['alternative_cells'], self.conf['data']['img_width'], self.conf['data']['img_height'])
+        v = v.reshape(-1, self.conf['lateral_model']['channels'] * self.conf['n_alternative_cells'], self.conf['dataset']['img_width'], self.conf['dataset']['img_height'])
+        v_gibb = v_gibb.reshape(-1, self.conf['lateral_model']['channels'] * self.conf['n_alternative_cells'], self.conf['dataset']['img_width'], self.conf['dataset']['img_height'])
         self.log_step(processed_values={"loss": loss}, metric_pairs=[(v, v_gibb)], prefix=log_prefix)
         return v, v_gibb, h, loss
 
@@ -109,7 +109,7 @@ class L2RBM(BaseLitModule):
         :param conf: Configuration dictionary.
         :return: A torch model.
         """
-        n_visible = conf['lateral_model']['channels'] * conf['data']['img_width'] * conf['data']['img_height'] * conf['alternative_cells']
+        n_visible = conf['lateral_model']['channels'] * conf['dataset']['img_width'] * conf['dataset']['img_height'] * conf['n_alternative_cells']
         return RBM(n_visible=n_visible, n_hidden=conf['l2']['n_hidden'], k=conf['l2']['k'])
 
     def configure_optimizers(self) -> Tuple[Optimizer, Optional[ReduceLROnPlateau]]:

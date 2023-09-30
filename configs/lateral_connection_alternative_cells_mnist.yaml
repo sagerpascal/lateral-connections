@@ -62,7 +62,7 @@ feature_extractor:
   bin_threshold: 0.  # set to 0.5 to obtain better features
   optimized_filter_lines: True # set to True to obtain better features
 
-alternative_cells: 10
+n_alternative_cells: 10
 
 lateral_model:
   channels: 4

@@ -388,7 +388,7 @@ class LateralLayerEfficientNetwork1L(nn.Module):
         self.avg_value_meter = {}
 
         lm_conf = self.conf["lateral_model"]
-        self.out_channels = self.conf["lateral_model"]["channels"] * conf['alternative_cells']
+        self.out_channels = self.conf["lateral_model"]["channels"] * conf['n_alternative_cells']
         self.in_channels = self.conf["feature_extractor"]["out_channels"] + self.out_channels
         if self.conf["feature_extractor"]["add_bg_channel"]:
             self.in_channels += 1

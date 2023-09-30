@@ -42,6 +42,29 @@ pip install ffcv
 pip install -r requirements.txt
 ```
 
+## Run experiments
+
+
+
+```bash
+python main_lateral_connections.py <config> --wandb --plot --store <store_path>
+python main_visualization.py <config> --load <store_path>
+```
+
+For config, use one of the following:
+- `lateral_connection_baseline.yaml` (4 straight lines without alternative cells)
+- `lateral_connection_alternative_cells.yaml` (straight lines)
+- `lateral_connection_alternative_cells_8bit.yaml` (straight line digits)
+- `lateral_connection_alternative_cells_mnist.yaml` (mnist digits)
+
+
+## Create plots published in thesis
+
+```bash
+python print_thesis.py
+```
+
+
 ## Create documentation
 
 Locally:

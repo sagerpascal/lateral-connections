@@ -109,32 +109,32 @@ straightline-simple:
     num_aug_versions: 0
     noise: 0.0
 
-  straightline:
-    num_channels: 1
-    mean: [ 0. ]
-    std: [ 1. ]
-    img_width: 32
-    img_height: 32
-    train_dataset_params:
-      split: "train"
-      vertical_horizontal_only: False
-      aug_range: 0
-      num_images: 300
-      num_aug_versions: 0
-    valid_dataset_params:
-      split: "val"
-      vertical_horizontal_only: False
-      aug_range: 0
-      num_images: 4
-      num_aug_versions: 0
-      noise: 0.0
-    test_dataset_params:
-      split: "test"
-      vertical_horizontal_only: False
-      aug_range: 0
-      num_images: 4
-      num_aug_versions: 0
-      noise: 0.0
+straightline:
+  num_channels: 1
+  mean: [ 0. ]
+  std: [ 1. ]
+  img_width: 32
+  img_height: 32
+  train_dataset_params:
+    split: "train"
+    vertical_horizontal_only: False
+    aug_range: 0
+    num_images: 300
+    num_aug_versions: 0
+  valid_dataset_params:
+    split: "val"
+    vertical_horizontal_only: False
+    aug_range: 0
+    num_images: 4
+    num_aug_versions: 0
+    noise: 0.0
+  test_dataset_params:
+    split: "test"
+    vertical_horizontal_only: False
+    aug_range: 0
+    num_images: 4
+    num_aug_versions: 0
+    noise: 0.0
 
 eight_bit_numbers:
   num_channels: 1
