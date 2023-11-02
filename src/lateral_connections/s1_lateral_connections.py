@@ -83,6 +83,7 @@ class LateralLayer(nn.Module):
         self.mask = None
         self.square_factor = square_factor
         self.support_factor = support_factor
+        self.step = 0
 
         assert self.hebbian_rule in ['vanilla'], \
             f"hebbian_rule must be 'vanilla', but is {self.hebbian_rule}"
@@ -232,31 +233,41 @@ class LateralLayer(nn.Module):
             max_support = self.support_factor * self.kernel_size[0]
             x_lateral_norm = torch.where(x_lateral < max_support, x_lateral, max_support - .5 * (x_lateral - max_support))
 
-            # Normalize by dividing through the sum of the weights
-            x_lateral_norm = x_lateral_norm / (1e-10 + torch.sum(self.W_lateral.data, dim=(1, 2, 3)).view(1, -1, 1, 1))
 
-            # TODO: Is the code below necessary?
-            # if self.ts > 0:
-            #     x_lateral_norm = (x_lateral_norm + self.ts * self.x_lateral_norm_prev) / (self.ts + 1)
-            # self.x_lateral_norm_prev = x_lateral_norm
+            # Divide by mean support per channel ?
 
-            if self.n_alternative_cells <= 1:  # TODO: is this if/else necessary?
-                # Bring activation in range [0, 1]
-                x_lateral_norm_s = x_lateral_norm.shape
-                x_lateral_norm /= (
-                        1e-10 + x_lateral_norm.view(-1, x_lateral_norm_s[2] * x_lateral_norm_s[3]).max(1)[0].view(
-                    x_lateral_norm_s[:2] + (1, 1)))
 
-            else:
-                # Normalize per alternative channel
-                x_lateral_norm_s = x_lateral_norm.shape
-                x_lateral_norm = x_lateral_norm.reshape((x_lateral_norm.shape[0],
-                                                         x_lateral_norm.shape[1] // self.n_alternative_cells,
-                                                         self.n_alternative_cells) + x_lateral_norm.shape[2:])
-                x_lateral_norm_alt_max = x_lateral_norm.view(x_lateral_norm.shape[:2] + (-1,)).max(dim=2)[0]
-                x_lateral_norm = x_lateral_norm / (
-                            1e-10 + x_lateral_norm_alt_max.reshape(x_lateral_norm_alt_max.shape + (1, 1, 1)))
-                x_lateral_norm = x_lateral_norm.reshape(x_lateral_norm_s)
+            # self.step += 1
+            # max_step = 2000
+            # slow_start = min(self.step, max_step) / 2000
+            # slow_start = max(slow_start, 0.2)
+
+            min_support = x_lateral_norm.reshape(x_lateral_norm.shape[1], -1).max(dim=(1))[0] / 1.5
+            x_lateral_norm = torch.where(x_lateral_norm < min_support.view(1, -1, 1, 1), 0, 1)
+
+            # upper_support = torch.min(torch.ones_like(x_lateral_norm[:, 0, 0, 0]) * max_support, x_lateral_norm.reshape(x_lateral_norm.shape[0], -1).max(dim=(1))[0])
+            # x_lateral_norm /= upper_support.view(-1, 1, 1, 1)
+
+            # # Normalize by dividing through the sum of the weights
+            # x_lateral_norm = x_lateral_norm / (1e-10 + torch.sum(self.W_lateral.data, dim=(1, 2, 3)).view(1, -1, 1, 1))
+#
+            # if self.n_alternative_cells <= 1:  # TODO: is this if/else necessary?
+            #     # Bring activation in range [0, 1]
+            #     x_lateral_norm_s = x_lateral_norm.shape
+            #     x_lateral_norm /= (
+            #             1e-10 + x_lateral_norm.view(-1, x_lateral_norm_s[2] * x_lateral_norm_s[3]).max(1)[0].view(
+            #         x_lateral_norm_s[:2] + (1, 1)))
+#
+            # else:
+            #     # Normalize per alternative channel
+            #     x_lateral_norm_s = x_lateral_norm.shape
+            #     x_lateral_norm = x_lateral_norm.reshape((x_lateral_norm.shape[0],
+            #                                              x_lateral_norm.shape[1] // self.n_alternative_cells,
+            #                                              self.n_alternative_cells) + x_lateral_norm.shape[2:])
+            #     x_lateral_norm_alt_max = x_lateral_norm.view(x_lateral_norm.shape[:2] + (-1,)).max(dim=2)[0]
+            #     x_lateral_norm = x_lateral_norm / (
+            #                 1e-10 + x_lateral_norm_alt_max.reshape(x_lateral_norm_alt_max.shape + (1, 1, 1)))
+            #     x_lateral_norm = x_lateral_norm.reshape(x_lateral_norm_s)
 
             if self.act_threshold == "bernoulli":
                 x_lateral_bin = torch.bernoulli(torch.clip(x_lateral_norm ** self.square_factor, 0, 1))
@@ -625,11 +636,11 @@ class LateralNetwork(pl.LightningModule):
                 plt_titles.extend([f"Input view {view_idx}", f"Extracted Features {view_idx}"])
                 background = torch.all((lateral_features[view_idx, -1] == 0), dim=0)
                 foreground = torch.argmax(lateral_features[view_idx, -1], dim=0)
-                calc_mask = torch.where(~background, foreground + 1, 0.)
+                calc_mask = torch.where(~background, foreground + 10, 0.) # +10 to make background very different
                 plt_masks.extend([None, calc_mask])
             plt_images = self._normalize_image_list(plt_images)
             plot_images(images=plt_images, titles=plt_titles, masks=plt_masks, max_cols=2, plot_colorbar=True,
-                        vmin=0, vmax=1, mask_vmin=0, mask_vmax=lateral_features.shape[2] + 1, fig_fp=fig_fp,
+                        vmin=0, vmax=1, mask_vmin=0, mask_vmax=lateral_features.shape[2] + 10, fig_fp=fig_fp,
                         show_plot=show_plot)
 
         fig_fp = self.conf['run']['plots'].get('store_path', None)
@@ -652,10 +663,10 @@ class LateralNetwork(pl.LightningModule):
                                          fig_fp=if_fp, show_plot=show_plot)
                 elif if_fp is not None:
                     files.remove(if_fp)
-                _plot_lateral_activation_map(lateral_features_i[batch_idx],
-                                             fig_fp=am_fp, show_plot=show_plot)
-                _plot_lateral_heat_map(lateral_features_f_i[batch_idx],
-                                       fig_fp=hm_fp, show_plot=show_plot)
+                # _plot_lateral_activation_map(lateral_features_i[batch_idx],
+                #                              fig_fp=am_fp, show_plot=show_plot)
+                # _plot_lateral_heat_map(lateral_features_f_i[batch_idx],
+                #                        fig_fp=hm_fp, show_plot=show_plot)
                 _plot_lateral_output(img_i[batch_idx], lateral_features_i[batch_idx],
                                      fig_fp=lo_fp, show_plot=show_plot)
 

@@ -6,7 +6,7 @@ dataset:
   num_workers: 0
 
 run:
-  n_epochs: 15
+  n_epochs: 80
   current_epoch: 0
   plots:
     enable: True
@@ -59,25 +59,25 @@ logging:
 feature_extractor:
   out_channels: 4
   add_bg_channel: False
-  bin_threshold: 0.  # set to 0.5 to obtain better features
+  bin_threshold: 0.5  # set to 0.5 to obtain better features
   optimized_filter_lines: True # set to True to obtain better features
 
 n_alternative_cells: 10
 
 lateral_model:
   channels: 4
-  max_timesteps: 1  # 1 = only one forward pass without recurrent connection
+  max_timesteps: 5  # 1 = only one forward pass without recurrent connection
   min_k: 2
   max_k: 3
   l1_type: 'lateral_flex'
   l1_params:
-    locality_size: 3
+    locality_size: 2
     lr: 20.0
     hebbian_rule: 'vanilla'
     neg_corr: True
-    act_threshold: 0.15  # 'bernoulli'
-    square_factor: 1.5
-    support_factor: 5
+    act_threshold: 0.5  # 'bernoulli'
+    square_factor: 1
+    support_factor: 2.0
 
 l2:
   k: 1

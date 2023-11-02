@@ -36,9 +36,14 @@ def _get_dataset(
         test_set = MNIST(root=dataset_path, transform=transform, **dataset_config['test_dataset_params'])
     elif dataset_name == "mnist-subset":
         transform = transforms.Compose([transforms.ToTensor(), transforms.Pad(2)])
-        train_set = torch.utils.data.Subset(MNIST(root=dataset_path, transform=transform, **dataset_config['test_dataset_params']), list(range(500)))
+        dataset = MNIST(root=dataset_path, transform=transform, **dataset_config['test_dataset_params'])
+        idx = dataset.train_labels == 0
+        dataset.data = dataset.data[idx]
+        dataset.targets = dataset.targets[idx]
+
+        train_set = torch.utils.data.Subset(dataset, list(range(500)))
         valid_set = None
-        test_set = torch.utils.data.Subset(MNIST(root=dataset_path, transform=transform, **dataset_config['test_dataset_params']), [1, 2, 3, 4, 5])
+        test_set = torch.utils.data.Subset(dataset, [0, 1, 2, 3, 4])
     elif dataset_name == "cifar10":
         train_set = CIFAR10(root=dataset_path, transform=transform, **dataset_config['train_dataset_params'])
         valid_set = None
