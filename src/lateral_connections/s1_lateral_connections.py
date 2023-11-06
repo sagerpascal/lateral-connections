@@ -12,7 +12,6 @@ from torch import Tensor
 from torchvision import utils
 
 from data import plot_images
-from data.custom_datasets.arc import get_colormap
 from tools import AverageMeter, bin2dec
 from utils import create_video_from_images_ffmpeg, print_logs
 
@@ -74,7 +73,6 @@ class LateralLayer(nn.Module):
         self.n_alternative_cells = n_alternative_cells
         self.in_channels = in_channels
         self.out_channels = out_channels
-        self.in_feature_channels = self.in_channels - self.out_channels
         self.locality_size = locality_size
         self.neib_size = 2 * self.locality_size + 1
         self.kernel_size = (self.neib_size, self.neib_size)
@@ -227,14 +225,12 @@ class LateralLayer(nn.Module):
         with torch.no_grad():
             x_rearranged = self.rearrange_input(x)
 
-            assert torch.all(
-                (x_rearranged == 0.) | (x_rearranged == 1.)), "x_rearranged not binary -> Torch Config Error"
+            assert torch.all((x_rearranged == 0.) | (x_rearranged == 1.)), "x_rearranged not binary -> Torch Config Error"
             x_lateral = F.conv2d(x_rearranged, self.W_lateral, padding="same", )
 
             # reduce weight at a certain point if it is too high (Inhibition)
             max_support = self.support_factor * self.kernel_size[0]
-            x_lateral_norm = torch.where(x_lateral < max_support, x_lateral,
-                                         max_support - .5 * (x_lateral - max_support))
+            x_lateral_norm = torch.where(x_lateral < max_support, x_lateral, max_support - .5 * (x_lateral - max_support))
 
             # Normalize by dividing through the sum of the weights
             x_lateral_norm = x_lateral_norm / (1e-10 + torch.sum(self.W_lateral.data, dim=(1, 2, 3)).view(1, -1, 1, 1))
@@ -259,7 +255,7 @@ class LateralLayer(nn.Module):
                                                          self.n_alternative_cells) + x_lateral_norm.shape[2:])
                 x_lateral_norm_alt_max = x_lateral_norm.view(x_lateral_norm.shape[:2] + (-1,)).max(dim=2)[0]
                 x_lateral_norm = x_lateral_norm / (
-                        1e-10 + x_lateral_norm_alt_max.reshape(x_lateral_norm_alt_max.shape + (1, 1, 1)))
+                            1e-10 + x_lateral_norm_alt_max.reshape(x_lateral_norm_alt_max.shape + (1, 1, 1)))
                 x_lateral_norm = x_lateral_norm.reshape(x_lateral_norm_s)
 
             if self.act_threshold == "bernoulli":
@@ -277,14 +273,12 @@ class LateralLayer(nn.Module):
                     # Shape w2: 5324, 40, 1
                     # Shape x2: 5324, 1, 1024
                     d2 = self.in_channels * self.kernel_size[0] * self.kernel_size[1]
-                    w2 = (self.W_lateral.reshape(self.out_channels, d2, 1).permute(1, 0, 2) > 0).float()
+                    w2 = (self.W_lateral.reshape(40, d2, 1).permute(1, 0, 2) > 0).float()
                     x2 = x_rearranged.reshape(d2, 1, 1024).permute(0, 1, 2)
                     pos_corr3 = torch.matmul(w2, x2)  # 40,5324,1 * 40,1,1024
                     neg_corr3 = torch.matmul(w2, 1 - x2) + torch.matmul(1 - w2, x2)
-                    pos_corr3 = pos_corr3.permute(2, 1, 0).reshape(1024, self.in_feature_channels,
-                                                                   self.n_alternative_cells, d2)
-                    neg_corr3 = neg_corr3.permute(2, 1, 0).reshape(1024, self.in_feature_channels,
-                                                                   self.n_alternative_cells, d2)
+                    pos_corr3 = pos_corr3.permute(2, 1, 0).reshape(1024, 4, 10, d2)
+                    neg_corr3 = neg_corr3.permute(2, 1, 0).reshape(1024, 4, 10, d2)
 
                     pos_corr = pos_corr3
                     neg_corr = neg_corr3
@@ -296,10 +290,10 @@ class LateralLayer(nn.Module):
                     pos_neg_corr_avg = torch.mean(pos_corr - neg_corr, dim=-1)
 
                     # just some plots for debugging
-                    pos_corr_avg_plot = torch.argmax(pos_corr_avg.permute(1, 2, 0), dim=1).reshape(-1, 32 * 32)
-                    neg_corr_avg_plot = torch.argmax(neg_corr_avg.permute(1, 2, 0), dim=1).reshape(-1, 32 * 32)
+                    pos_corr_avg_plot = torch.argmax(pos_corr_avg.permute(1, 2, 0), dim=1).reshape(-1, 32*32)
+                    neg_corr_avg_plot = torch.argmax(neg_corr_avg.permute(1, 2, 0), dim=1).reshape(-1, 32*32)
                     neg_corr_avg_plotn = torch.argmin(neg_corr_avg.permute(1, 2, 0), dim=1).reshape(-1, 32 * 32)
-                    pos_neg_corr_avg_plot = torch.argmax(pos_neg_corr_avg.permute(1, 2, 0), dim=1).reshape(-1, 32 * 32)
+                    pos_neg_corr_avg_plot = torch.argmax(pos_neg_corr_avg.permute(1, 2, 0), dim=1).reshape(-1, 32*32)
 
                     plot = False
                     if plot:
@@ -326,8 +320,7 @@ class LateralLayer(nn.Module):
 
                         pos_corr_avg_plot = torch.max(pos_corr_avg.permute(1, 2, 0), dim=1)[0].reshape(-1, 32 * 32)
                         neg_corr_avg_plot = torch.max(neg_corr_avg.permute(1, 2, 0), dim=1)[0].reshape(-1, 32 * 32)
-                        pos_neg_corr_avg_plot = torch.max(pos_neg_corr_avg.permute(1, 2, 0), dim=1)[0].reshape(-1,
-                                                                                                               32 * 32)
+                        pos_neg_corr_avg_plot = torch.max(pos_neg_corr_avg.permute(1, 2, 0), dim=1)[0].reshape(-1, 32 * 32)
                         fig, ax = plt.subplots(4, 3, figsize=(15, 15))
                         for i in range(4):
                             pos_corr_avg_plott = pos_corr_avg_plot[i].reshape(32, 32).cpu().numpy()
@@ -346,27 +339,18 @@ class LateralLayer(nn.Module):
                         plt.show()
 
                     best_channel = torch.argmax(pos_neg_corr_avg, dim=2)
-                    best_channel = best_channel.reshape((x_lateral_bin.shape[0],) + x_lateral_bin.shape[2:] + (-1,))
+                    best_channel = best_channel.reshape((x_lateral_bin.shape[0], ) + x_lateral_bin.shape[2:] + (-1, ))
 
-                    x_lateral_bin_reshaped = x_lateral_bin.reshape((x_lateral_bin.shape[0],
-                                                                    x_lateral_bin.shape[1] // self.n_alternative_cells,
-                                                                    self.n_alternative_cells) + x_lateral_bin.shape[
-                                                                                                2:]).permute(0, 3, 4, 1,
-                                                                                                             2)
-                    self.mask = (torch.arange(0, self.n_alternative_cells).view(1, 1, 1, 1,
-                                                                                -1).cuda() == best_channel.unsqueeze(
-                        -1))
+                    x_lateral_bin_reshaped = x_lateral_bin.reshape((x_lateral_bin.shape[0], x_lateral_bin.shape[1] // self.n_alternative_cells, self.n_alternative_cells) + x_lateral_bin.shape[2:]).permute(0, 3, 4, 1, 2)
+                    self.mask = (torch.arange(0, 10).view(1, 1, 1, 1, -1).cuda() == best_channel.unsqueeze(-1))
                     assert torch.all(torch.sum(self.mask, dim=4) == 1)
 
                 else:
-                    x_lateral_bin_reshaped = x_lateral_bin.reshape((x_lateral_bin.shape[0],
-                                                                    x_lateral_bin.shape[1] // self.n_alternative_cells,
-                                                                    self.n_alternative_cells) + x_lateral_bin.shape[
-                                                                                                2:]).permute(0, 3, 4, 1,
-                                                                                                             2)
+                    x_lateral_bin_reshaped = x_lateral_bin.reshape((x_lateral_bin.shape[0], x_lateral_bin.shape[1] // self.n_alternative_cells, self.n_alternative_cells) + x_lateral_bin.shape[2:]).permute(0, 3, 4, 1, 2)
 
                 x_lateral_bin_reshaped = x_lateral_bin_reshaped * self.mask
                 x_lateral_bin = x_lateral_bin_reshaped.detach().permute(0, 3, 4, 1, 2).reshape(x_lateral_bin.shape)
+
 
             stats = {
                 "l1/avg_support_active": x_lateral[x_lateral_bin > 0].mean().item(),
@@ -385,7 +369,6 @@ class LateralLayer(nn.Module):
             }
 
             return x_lateral_norm, x_lateral_bin, stats
-
 
 class LateralLayerEfficientNetwork1L(nn.Module):
     """
@@ -557,82 +540,6 @@ class LateralNetwork(pl.LightningModule):
             plt.close()
         return files
 
-    def plot_samples_arc(self,
-                         img: List[Tensor],
-                         metadata: List[Dict[str, Any]],
-                         features: List[Tensor],
-                         input_features: List[Tensor],
-                         lateral_features: List[Tensor],
-                         lateral_features_f: List[Tensor],
-                         plot_input_features: Optional[bool] = True,
-                         show_plot: Optional[bool] = False,
-                         ):
-
-        def _plot_arc(ax, title, data):
-            ax.set_title(title)
-            ax.imshow(data, cmap=get_colormap(), vmin=0, vmax=9, interpolation='none')
-
-            # Gridlines
-            ax.set_xticks([])
-            ax.set_yticks([])
-            ax.set_xticks(np.arange(-.5, data.shape[1], 1), minor=True)
-            ax.set_yticks(np.arange(-.5, data.shape[0], 1), minor=True)
-            ax.grid(which='minor', color='gray', linestyle='-', linewidth=1)
-
-            for lbl in ax.axes.get_xticklabels():
-                lbl.set_fontsize(0.0)
-            for lbl in ax.axes.get_yticklabels():
-                lbl.set_fontsize(0.0)
-
-        images = torch.concat(img, dim=0)
-        assert torch.max(torch.sum(images, dim=1)) == 1, "Multiple channels active within one image!"
-        images_orig_padded = torch.argmax(images, dim=1)
-        # A list of images with size (w, h)
-        images_orig = [images_orig_padded[i, metadata[i]['pad'][0]:-metadata[i]['pad'][1], metadata[i]['pad'][2]:-metadata[i]['pad'][3]] for i in range(images_orig_padded.shape[0])]
-
-        # A list of features with size (timesteps + avg. over time, channels, alternative channels, w, h)
-        lateral_features = torch.concat(lateral_features, dim=0).squeeze()
-        lateral_features = lateral_features.reshape(lateral_features.shape[0], lateral_features.shape[1], self.conf['lateral_model']['channels'], self.conf['n_alternative_cells'], 32, 32)
-        lateral_features = [lateral_features[i, :, :, :, metadata[i]['pad'][0]:-metadata[i]['pad'][1], metadata[i]['pad'][2]:-metadata[i]['pad'][3]] for i in range(lateral_features.shape[0])]
-
-        # A list of features_f with size (timesteps + avg. over time, channels, alternative channels, w, h)
-        lateral_features_f = torch.concat(lateral_features_f, dim=0).squeeze()
-        lateral_features_f = lateral_features_f.reshape(lateral_features_f.shape[0], lateral_features_f.shape[1], self.conf['lateral_model']['channels'], self.conf['n_alternative_cells'], 32, 32)
-        lateral_features_f = [lateral_features_f[i, :, :, :, metadata[i]['pad'][0]:-metadata[i]['pad'][1], metadata[i]['pad'][2]:-metadata[i]['pad'][3]] for i in range(lateral_features_f.shape[0])]
-
-        # Features -> Argmax per alternative channel
-        for lf in lateral_features:
-            assert torch.max(torch.sum(lf, dim=2)) <= 1, "Multiple channels active within one alt. channel!"
-
-        lateral_features_bg = [torch.all(lateral_features[i] == 0, dim=2) for i in range(len(lateral_features))]
-        lateral_features_foreground = [torch.argmax(lateral_features[i], dim=2) for i in range(len(lateral_features))]
-        lateral_features_mask = [torch.where(lateral_features_bg[i], 0, lateral_features_foreground[i] + 1) for i in range(len(lateral_features))]
-
-        # # Plot input vs. lateral features over time
-        # for img, features in zip(images_orig, lateral_features_mask):
-        #     fig, axs = plt.subplots(features.shape[0], features.shape[1]+1, figsize=(20, 15))
-        #     for i in range(features.shape[0]):
-        #         _plot_arc(axs[i, 0], f"Input {metadata[i]['task']}", img.cpu().numpy())
-        #         for j in range(features.shape[1]):
-        #             t = i if i < features.shape[0] - 1 else "avg"
-        #             _plot_arc(axs[i, j+1], f"Lat. T={t} C={j}", features[i, j].cpu().numpy())
-#
-        #     plt.tight_layout()
-        #     plt.show()
-
-        # Same plot but binarize all alternative channel (don't know which alternative channel is active)
-        lateral_features_mask_bin = [torch.argmax(torch.where(lateral_features_bg[i], 0, 1), dim=1) for i in range(len(lateral_features))]
-        for img, features in zip(images_orig, lateral_features_mask_bin):
-            fig, axs = plt.subplots(features.shape[0], 2, figsize=(20, 4))
-            for i in range(features.shape[0]):
-                t = i if i < features.shape[0] - 1 else "avg"
-                _plot_arc(axs[i, 0], f"Input {metadata[i]['task']}", img.cpu().numpy())
-                _plot_arc(axs[i, 1], f"Lat. T={t}", features[i].cpu().numpy())
-
-            plt.tight_layout()
-            plt.show()
-
-
     def plot_samples(self,
                      img: List[Tensor],
                      features: List[Tensor],
@@ -725,51 +632,6 @@ class LateralNetwork(pl.LightningModule):
                         vmin=0, vmax=1, mask_vmin=0, mask_vmax=lateral_features.shape[2] + 1, fig_fp=fig_fp,
                         show_plot=show_plot)
 
-        def plot_alternative_cells(
-                img,
-                input_features,
-                lateral_features,
-                n_alternative_cells,
-                fig_fp: Optional[str] = None,
-                show_plot: Optional[bool] = False
-        ):
-            max_views = 1
-            n_channels = input_features.shape[1]
-
-            plt_images, plt_titles, plt_masks = [], [], []
-            for view_idx in range(min(max_views, lateral_features.shape[0])):
-                img_norm = self._normalize_image_list([img[view_idx]])
-
-                plt_titles.append(f"Input")
-                plt_images.extend(img_norm * (n_channels + 1))
-
-                # input features
-                plt_titles.extend(["Input Features"] * n_channels)
-                masks = [input_features[view_idx, c] for c in range(n_channels)]
-                plt_masks.extend([None] + masks)
-
-                for time_idx in range(lateral_features.shape[1]):
-                    ti = "avg" if time_idx == lateral_features.shape[1] - 1 else time_idx
-                    plt_titles.append(f"Input T={ti}")
-                    plt_images.extend(img_norm * (n_channels + 1))
-                    plt_masks.append(None)
-
-                    # lateral features
-                    plt_titles.extend(["Lat. Features"] * n_channels)
-                    lf = lateral_features[view_idx, time_idx].reshape(n_channels, n_alternative_cells,
-                                                                      *lateral_features.shape[-2:])
-                    for c in range(n_channels):
-                        background = torch.all((lf[c] == 0), dim=0)
-                        foreground = torch.argmax(lf[c], dim=0)
-                        assert torch.sum(lf[c], dim=0).max() <= 1, "Only one cell should be active"
-                        calc_mask = torch.where(~background, foreground + 1, 0.)
-                        plt_masks.append(calc_mask)
-
-                plot_images(images=plt_images, titles=plt_titles, masks=plt_masks, max_cols=n_channels + 1,
-                            plot_colorbar=False,
-                            vmin=0, vmax=1, mask_vmin=0, mask_vmax=n_alternative_cells + 1, fig_fp=fig_fp,
-                            show_plot=show_plot)
-
         fig_fp = self.conf['run']['plots'].get('store_path', None)
         files = []
         for i, (img_i, features_i, input_features_i, lateral_features_i, lateral_features_f_i) in enumerate(
@@ -796,9 +658,6 @@ class LateralNetwork(pl.LightningModule):
                                        fig_fp=hm_fp, show_plot=show_plot)
                 _plot_lateral_output(img_i[batch_idx], lateral_features_i[batch_idx],
                                      fig_fp=lo_fp, show_plot=show_plot)
-
-                plot_alternative_cells(img_i[batch_idx], input_features_i[batch_idx], lateral_features_i[batch_idx],
-                                       self.conf["n_alternative_cells"], fig_fp=lo_fp, show_plot=show_plot)
 
         return files
 

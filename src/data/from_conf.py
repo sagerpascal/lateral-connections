@@ -9,7 +9,6 @@ from torchvision.datasets import CIFAR10, CIFAR100, ImageNet, MNIST
 from data.augmentation import get_image_augmentation, get_transform_pipeline
 from data.custom_datasets.eight_bit_numbers import EightBitDataset
 from data.custom_datasets.straight_line import StraightLine
-from data.custom_datasets.arc import ArcDataset
 from data.loader import get_ffcv_data_loaders, get_ffcv_image_pipeline, get_ffcv_label_pipeline, \
     get_torch_data_loaders
 
@@ -60,10 +59,6 @@ def _get_dataset(
         train_set = EightBitDataset(transform=transform, **dataset_config['train_dataset_params'])
         valid_set = EightBitDataset(transform=transform, **dataset_config['valid_dataset_params'])
         test_set = EightBitDataset(transform=transform, **dataset_config['test_dataset_params'])
-    elif dataset_name == "arc":
-        train_set = ArcDataset()
-        valid_set = None
-        test_set = ArcDataset()
     else:
         raise ValueError("Unknown dataset name: {}".format(dataset_name))
 
