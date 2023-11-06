@@ -49,21 +49,21 @@ mnist:
     train: False
     download: True
 
-  mnist-subset:
-    dir: mnist/
-    beton_dir: beton/mnist/
-    mean: [ 0.1307 ]
-    std: [ 0.3081 ]
-    num_classes: 10
-    num_channels: 1
-    img_width: 28
-    img_height: 28
-    train_dataset_params:
-      train: True
-      download: True
-    test_dataset_params:
-      train: False
-      download: True
+mnist-subset:
+  dir: mnist/
+  beton_dir: beton/mnist/
+  mean: [ 0.1307 ]
+  std: [ 0.3081 ]
+  num_classes: 10
+  num_channels: 1
+  img_width: 28
+  img_height: 28
+  train_dataset_params:
+    train: True
+    download: True
+  test_dataset_params:
+    train: False
+    download: True
 
 imagenet:
   dir: imagenet/
@@ -151,6 +151,13 @@ eight_bit_numbers:
   test_dataset_params:
     samples_per_class: 1
     include_noise: False
+
+arc:
+  num_channels: 1
+  mean: [ 0. ]
+  std: [ 1. ]
+  img_width: 32
+  img_height: 32
 
 augmentation_v1:
   aug1:

@@ -3,7 +3,6 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import lightning.pytorch as pl
-import numpy as np
 import torch
 import torch.nn.functional as F
 import wandb
@@ -16,8 +15,8 @@ from tqdm import tqdm
 
 from data import loaders_from_config
 from lateral_connections.feature_extractor.straight_line_pl_modules import FixedFilterFeatureExtractor
-from lateral_connections.s2_rbm import L2RBM
 from lateral_connections.s1_lateral_connections import LateralNetwork
+from lateral_connections.s2_rbm import L2RBM
 from tools import loggers_from_conf
 from tools.store_load_run import load_run, save_run
 from utils import get_config, print_start, print_warn
@@ -174,8 +173,11 @@ def cycle(
     assert mode == "train" and fabric is not None or mode == "eval", "Fabric must be given in train mode"
     assert mode == "train" and fabric is not None or mode == "eval", "Optimizer must be given in train mode"
 
-    with torch.no_grad():
-        features = feature_extractor(batch)
+    if config['feature_extractor']['active']:
+        with torch.no_grad():
+            features = feature_extractor(batch)
+    else:
+        features = batch.unsqueeze(1)
 
     lateral_network.new_sample()
     z = None
@@ -308,8 +310,8 @@ def single_eval_epoch(
     feature_extractor.eval()
     lateral_network.eval()
     l2.eval()
-    plt_img, plt_features, plt_input_features, plt_activations, plt_activations_f, plt_activations_l2 = [], [], [], \
-        [], [], []
+    plt_img, plt_meta, plt_features, plt_input_features, plt_activations, plt_activations_f, plt_activations_l2 = ([],
+                                                                                                                   [], [], [], [], [], [])
     for i, batch in tqdm(enumerate(test_loader),
                          total=len(test_loader),
                          colour="GREEN",
@@ -325,6 +327,7 @@ def single_eval_epoch(
                                                                                                                store_tensors=True,
                                                                                                                mode="eval")
             plt_img.append(batch[0])
+            plt_meta.append(batch[1])
             plt_features.append(features)
             plt_input_features.append(input_features)
             plt_activations.append(lateral_features)
@@ -339,16 +342,17 @@ def single_eval_epoch(
     assert not wandb_b or wandb_b and store_plots, "Wandb logging requires storing the plots."
 
     if plot or wandb_b or store_plots:
-        if epoch == 0:
-            feature_extractor.plot_model_weights(show_plot=plot)
-#
-        plots_fp = lateral_network.plot_samples(plt_img,
-                                                plt_features,
-                                                plt_input_features,
-                                                plt_activations,
-                                                plt_activations_f,
-                                                plot_input_features=epoch == 0,
-                                                show_plot=plot)
+        # if epoch == 0:
+        #     feature_extractor.plot_model_weights(show_plot=plot)
+        #
+        plots_fp = lateral_network.plot_samples_arc(plt_img,
+                                                    plt_meta,
+                                                    plt_features,
+                                                    plt_input_features,
+                                                    plt_activations,
+                                                    plt_activations_f,
+                                                    plot_input_features=epoch == 0,
+                                                    show_plot=plot)
         weights_fp = lateral_network.plot_model_weights(show_plot=plot)
         plots_l2_fp = l2.plot_samples(plt_img, plt_activations_l2, show_plot=plot)
         if epoch == config['run']['n_epochs']:
