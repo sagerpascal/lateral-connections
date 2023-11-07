@@ -53,7 +53,7 @@ def get_torch_data_loaders(
         num_workers: Optional[int] = 0,
         pin_memory: Optional[bool] = True,
         collate_fn: Optional[_collate_fn_t] = None,
-        shuffle_train: Optional[bool] = True,
+        shuffle_train: Optional[bool] = False,
         shuffle_valid: Optional[bool] = False,
         shuffle_test: Optional[bool] = False,
         drop_last_train: Optional[bool] = False,

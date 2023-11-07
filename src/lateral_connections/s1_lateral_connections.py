@@ -168,7 +168,7 @@ class LateralLayer(nn.Module):
         if self.n_alternative_cells <= 1:  # TODO: is this if/else still necessary?
             for co in range(self.out_channels):
                 for ci in range(self.in_channels):
-                    if ci == co or ci + 4 == co:
+                    if ci == co or ci + self.in_feature_channels == co:
                         cii = ci * self.kernel_size[0] * self.kernel_size[1] + self.locality_size * self.kernel_size[
                             1] + self.locality_size
                         W_lateral[co, cii, 0, 0] = 1
@@ -176,7 +176,7 @@ class LateralLayer(nn.Module):
         else:
             for co in range(self.out_channels):
                 for ci in range(self.in_channels):
-                    if (ci < 4 and co // self.n_alternative_cells == ci) or ci == co + 4:
+                    if (ci < self.in_feature_channels and co // self.n_alternative_cells == ci) or ci == co + self.in_feature_channels:
                         cii = ci * self.kernel_size[0] * self.kernel_size[1] + self.locality_size * self.kernel_size[
                             1] + self.locality_size
                         W_lateral[co, cii, 0, 0] = 1
@@ -236,13 +236,94 @@ class LateralLayer(nn.Module):
             x_lateral_norm = torch.where(x_lateral < max_support, x_lateral,
                                          max_support - .5 * (x_lateral - max_support))
 
-            # Normalize by dividing through the sum of the weights
-            x_lateral_norm = x_lateral_norm / (1e-10 + torch.sum(self.W_lateral.data, dim=(1, 2, 3)).view(1, -1, 1, 1))
 
-            # TODO: Is the code below necessary?
-            # if self.ts > 0:
-            #     x_lateral_norm = (x_lateral_norm + self.ts * self.x_lateral_norm_prev) / (self.ts + 1)
-            # self.x_lateral_norm_prev = x_lateral_norm
+            # ----------------------------------------------------------------------------------------------------
+            #   FIND THE CHANNEL THAT FITS THE OUTPUT BEST
+            if self.n_alternative_cells > 1 and self.ts == 0:
+
+                assert x_lateral.shape[0] == 1, "only works with batch size = 1 atm."
+
+                # Shape w2: 5324, 40, 1
+                # Shape x2: 5324, 1, 1024
+                d2 = self.in_channels * self.kernel_size[0] * self.kernel_size[1]
+                w2 = (self.W_lateral.reshape(self.out_channels, d2, 1).permute(1, 0, 2) > 0).float()
+                x2 = x_rearranged.reshape(d2, 1, 1024).permute(0, 1, 2)
+                pos_corr = torch.matmul(w2, x2)  # 40,5324,1 * 40,1,1024
+                neg_corr = torch.matmul(w2, 1 - x2) + torch.matmul(1 - w2, x2)
+                pos_corr = pos_corr.permute(2, 1, 0).reshape(1024, self.in_feature_channels,
+                                                               self.n_alternative_cells, d2)
+                neg_corr = neg_corr.permute(2, 1, 0).reshape(1024, self.in_feature_channels,
+                                                               self.n_alternative_cells, d2)
+
+                # correlation shape: (batch_size*H*W, out_channels, alt_channels, in_channels*kernel_w*kernel_h)
+                # Goal for every position in the channel 0, one of the alternative output channels should be active
+                pos_corr_avg = torch.mean(pos_corr, dim=-1)
+                neg_corr_avg = torch.mean(neg_corr, dim=-1)
+                pos_neg_corr_avg = torch.mean(pos_corr - neg_corr, dim=-1)
+
+
+                plot = False
+                if plot:
+                    # just some plots for debugging
+                    pos_corr_avg_plot = torch.argmax(pos_corr_avg.permute(1, 2, 0), dim=1).reshape(-1, 32 * 32)
+                    neg_corr_avg_plot = torch.argmax(neg_corr_avg.permute(1, 2, 0), dim=1).reshape(-1, 32 * 32)
+                    neg_corr_avg_plotn = torch.argmin(neg_corr_avg.permute(1, 2, 0), dim=1).reshape(-1, 32 * 32)
+                    pos_neg_corr_avg_plot = torch.argmax(pos_neg_corr_avg.permute(1, 2, 0), dim=1).reshape(-1, 32 * 32)
+
+                    fig, ax = plt.subplots(4, 4, figsize=(15, 15))
+                    for i in range(4):
+                        pos_corr_avg_plott = pos_corr_avg_plot[i].reshape(32, 32).cpu().numpy()
+                        neg_corr_avg_plott = neg_corr_avg_plot[i].reshape(32, 32).cpu().numpy()
+                        neg_corr_avg_plotnt = neg_corr_avg_plotn[i].reshape(32, 32).cpu().numpy()
+                        pos_neg_corr_avg_plott = pos_neg_corr_avg_plot[i].reshape(32, 32).cpu().numpy()
+                        im = ax[i, 0].imshow(pos_corr_avg_plott, vmin=0, vmax=9, cmap="tab10")
+                        im2 = ax[i, 1].imshow(neg_corr_avg_plott, vmin=0, vmax=9, cmap="tab10")
+                        im3 = ax[i, 2].imshow(neg_corr_avg_plotnt, vmin=0, vmax=9, cmap="tab10")
+                        im4 = ax[i, 3].imshow(pos_neg_corr_avg_plott, vmin=0, vmax=9, cmap="tab10")
+                        plt.colorbar(im, ax=ax[i, 0])
+                        plt.colorbar(im2, ax=ax[i, 1])
+                        plt.colorbar(im3, ax=ax[i, 2])
+                        plt.colorbar(im4, ax=ax[i, 3])
+                        ax[i, 0].set_title("Alt. Channel with highest pos. correlation")
+                        ax[i, 1].set_title("Alt. Channel with highest neg. correlation")
+                        ax[i, 2].set_title("Alt. Channel with lowest neg. correlation")
+                        ax[i, 3].set_title("Alt. Channel with highest pos. - neg correlation")
+                    plt.tight_layout()
+                    plt.show()
+
+                    pos_corr_avg_plot = torch.max(pos_corr_avg.permute(1, 2, 0), dim=1)[0].reshape(-1, 32 * 32)
+                    neg_corr_avg_plot = torch.max(neg_corr_avg.permute(1, 2, 0), dim=1)[0].reshape(-1, 32 * 32)
+                    pos_neg_corr_avg_plot = torch.max(pos_neg_corr_avg.permute(1, 2, 0), dim=1)[0].reshape(-1,
+                                                                                                           32 * 32)
+                    fig, ax = plt.subplots(4, 3, figsize=(15, 15))
+                    for i in range(4):
+                        pos_corr_avg_plott = pos_corr_avg_plot[i].reshape(32, 32).cpu().numpy()
+                        neg_corr_avg_plott = neg_corr_avg_plot[i].reshape(32, 32).cpu().numpy()
+                        pos_neg_corr_avg_plott = pos_neg_corr_avg_plot[i].reshape(32, 32).cpu().numpy()
+                        im = ax[i, 0].imshow(pos_corr_avg_plott, cmap="jet")
+                        im2 = ax[i, 1].imshow(neg_corr_avg_plott, cmap="jet")
+                        im3 = ax[i, 2].imshow(pos_neg_corr_avg_plott, cmap="jet")
+                        plt.colorbar(im, ax=ax[i, 0])
+                        plt.colorbar(im2, ax=ax[i, 1])
+                        plt.colorbar(im3, ax=ax[i, 2])
+                        ax[i, 0].set_title("Highest pos. correlation")
+                        ax[i, 1].set_title("Highest neg. correlation")
+                        ax[i, 2].set_title("Highest pos. - neg correlation")
+                    plt.tight_layout()
+                    plt.show()
+
+                best_channel = torch.argmax(pos_neg_corr_avg, dim=2)
+                best_channel = best_channel.reshape((x_lateral.shape[0],) + x_lateral.shape[2:] + (-1,))
+
+                self.mask = (torch.arange(0, self.n_alternative_cells).view(1, 1, 1, 1,
+                                                                            -1).cuda() == best_channel.unsqueeze(
+                    -1))
+                assert torch.all(torch.sum(self.mask, dim=4) == 1)
+
+            # ----------------------------------------------------------------------------------------------------
+
+            # Normalize by dividing through the sum of the weights
+            # x_lateral_norm = x_lateral_norm / (1e-10 + torch.sum(self.W_lateral.data, dim=(1, 2, 3)).view(1, -1, 1, 1))
 
             if self.n_alternative_cells <= 1:  # TODO: is this if/else necessary?
                 # Bring activation in range [0, 1]
@@ -257,6 +338,12 @@ class LateralLayer(nn.Module):
                 x_lateral_norm = x_lateral_norm.reshape((x_lateral_norm.shape[0],
                                                          x_lateral_norm.shape[1] // self.n_alternative_cells,
                                                          self.n_alternative_cells) + x_lateral_norm.shape[2:])
+
+                x_lateral_norm = x_lateral_norm.permute(0, 3, 4, 1,2)
+                x_lateral_norm = x_lateral_norm * self.mask
+                x_lateral_norm = x_lateral_norm.detach().permute(0, 3, 4, 1, 2)
+
+
                 x_lateral_norm_alt_max = x_lateral_norm.view(x_lateral_norm.shape[:2] + (-1,)).max(dim=2)[0]
                 x_lateral_norm = x_lateral_norm / (
                         1e-10 + x_lateral_norm_alt_max.reshape(x_lateral_norm_alt_max.shape + (1, 1, 1)))
@@ -267,106 +354,6 @@ class LateralLayer(nn.Module):
             else:
                 x_lateral_bin = (x_lateral_norm ** self.square_factor >= self.act_threshold).float()
 
-            if self.n_alternative_cells > 1:
-                # Set some channels == 0
-
-                if self.ts == 0:
-
-                    assert x_lateral_bin.shape[0] == 1, "only works with batch size = 1 atm."
-
-                    # Shape w2: 5324, 40, 1
-                    # Shape x2: 5324, 1, 1024
-                    d2 = self.in_channels * self.kernel_size[0] * self.kernel_size[1]
-                    w2 = (self.W_lateral.reshape(self.out_channels, d2, 1).permute(1, 0, 2) > 0).float()
-                    x2 = x_rearranged.reshape(d2, 1, 1024).permute(0, 1, 2)
-                    pos_corr3 = torch.matmul(w2, x2)  # 40,5324,1 * 40,1,1024
-                    neg_corr3 = torch.matmul(w2, 1 - x2) + torch.matmul(1 - w2, x2)
-                    pos_corr3 = pos_corr3.permute(2, 1, 0).reshape(1024, self.in_feature_channels,
-                                                                   self.n_alternative_cells, d2)
-                    neg_corr3 = neg_corr3.permute(2, 1, 0).reshape(1024, self.in_feature_channels,
-                                                                   self.n_alternative_cells, d2)
-
-                    pos_corr = pos_corr3
-                    neg_corr = neg_corr3
-
-                    # correlation shape: (batch_size*H*W, out_channels, alt_channels, in_channels*kernel_w*kernel_h)
-                    # Goal for every position in the channel 0, one of the alternative output channels should be active
-                    pos_corr_avg = torch.mean(pos_corr, dim=-1)
-                    neg_corr_avg = torch.mean(neg_corr, dim=-1)
-                    pos_neg_corr_avg = torch.mean(pos_corr - neg_corr, dim=-1)
-
-                    # just some plots for debugging
-                    pos_corr_avg_plot = torch.argmax(pos_corr_avg.permute(1, 2, 0), dim=1).reshape(-1, 32 * 32)
-                    neg_corr_avg_plot = torch.argmax(neg_corr_avg.permute(1, 2, 0), dim=1).reshape(-1, 32 * 32)
-                    neg_corr_avg_plotn = torch.argmin(neg_corr_avg.permute(1, 2, 0), dim=1).reshape(-1, 32 * 32)
-                    pos_neg_corr_avg_plot = torch.argmax(pos_neg_corr_avg.permute(1, 2, 0), dim=1).reshape(-1, 32 * 32)
-
-                    plot = False
-                    if plot:
-                        fig, ax = plt.subplots(4, 4, figsize=(15, 15))
-                        for i in range(4):
-                            pos_corr_avg_plott = pos_corr_avg_plot[i].reshape(32, 32).cpu().numpy()
-                            neg_corr_avg_plott = neg_corr_avg_plot[i].reshape(32, 32).cpu().numpy()
-                            neg_corr_avg_plotnt = neg_corr_avg_plotn[i].reshape(32, 32).cpu().numpy()
-                            pos_neg_corr_avg_plott = pos_neg_corr_avg_plot[i].reshape(32, 32).cpu().numpy()
-                            im = ax[i, 0].imshow(pos_corr_avg_plott, vmin=0, vmax=9, cmap="tab10")
-                            im2 = ax[i, 1].imshow(neg_corr_avg_plott, vmin=0, vmax=9, cmap="tab10")
-                            im3 = ax[i, 2].imshow(neg_corr_avg_plotnt, vmin=0, vmax=9, cmap="tab10")
-                            im4 = ax[i, 3].imshow(pos_neg_corr_avg_plott, vmin=0, vmax=9, cmap="tab10")
-                            plt.colorbar(im, ax=ax[i, 0])
-                            plt.colorbar(im2, ax=ax[i, 1])
-                            plt.colorbar(im3, ax=ax[i, 2])
-                            plt.colorbar(im4, ax=ax[i, 3])
-                            ax[i, 0].set_title("Alt. Channel with highest pos. correlation")
-                            ax[i, 1].set_title("Alt. Channel with highest neg. correlation")
-                            ax[i, 2].set_title("Alt. Channel with lowest neg. correlation")
-                            ax[i, 3].set_title("Alt. Channel with highest pos. - neg correlation")
-                        plt.tight_layout()
-                        plt.show()
-
-                        pos_corr_avg_plot = torch.max(pos_corr_avg.permute(1, 2, 0), dim=1)[0].reshape(-1, 32 * 32)
-                        neg_corr_avg_plot = torch.max(neg_corr_avg.permute(1, 2, 0), dim=1)[0].reshape(-1, 32 * 32)
-                        pos_neg_corr_avg_plot = torch.max(pos_neg_corr_avg.permute(1, 2, 0), dim=1)[0].reshape(-1,
-                                                                                                               32 * 32)
-                        fig, ax = plt.subplots(4, 3, figsize=(15, 15))
-                        for i in range(4):
-                            pos_corr_avg_plott = pos_corr_avg_plot[i].reshape(32, 32).cpu().numpy()
-                            neg_corr_avg_plott = neg_corr_avg_plot[i].reshape(32, 32).cpu().numpy()
-                            pos_neg_corr_avg_plott = pos_neg_corr_avg_plot[i].reshape(32, 32).cpu().numpy()
-                            im = ax[i, 0].imshow(pos_corr_avg_plott, cmap="jet")
-                            im2 = ax[i, 1].imshow(neg_corr_avg_plott, cmap="jet")
-                            im3 = ax[i, 2].imshow(pos_neg_corr_avg_plott, cmap="jet")
-                            plt.colorbar(im, ax=ax[i, 0])
-                            plt.colorbar(im2, ax=ax[i, 1])
-                            plt.colorbar(im3, ax=ax[i, 2])
-                            ax[i, 0].set_title("Highest pos. correlation")
-                            ax[i, 1].set_title("Highest neg. correlation")
-                            ax[i, 2].set_title("Highest pos. - neg correlation")
-                        plt.tight_layout()
-                        plt.show()
-
-                    best_channel = torch.argmax(pos_neg_corr_avg, dim=2)
-                    best_channel = best_channel.reshape((x_lateral_bin.shape[0],) + x_lateral_bin.shape[2:] + (-1,))
-
-                    x_lateral_bin_reshaped = x_lateral_bin.reshape((x_lateral_bin.shape[0],
-                                                                    x_lateral_bin.shape[1] // self.n_alternative_cells,
-                                                                    self.n_alternative_cells) + x_lateral_bin.shape[
-                                                                                                2:]).permute(0, 3, 4, 1,
-                                                                                                             2)
-                    self.mask = (torch.arange(0, self.n_alternative_cells).view(1, 1, 1, 1,
-                                                                                -1).cuda() == best_channel.unsqueeze(
-                        -1))
-                    assert torch.all(torch.sum(self.mask, dim=4) == 1)
-
-                else:
-                    x_lateral_bin_reshaped = x_lateral_bin.reshape((x_lateral_bin.shape[0],
-                                                                    x_lateral_bin.shape[1] // self.n_alternative_cells,
-                                                                    self.n_alternative_cells) + x_lateral_bin.shape[
-                                                                                                2:]).permute(0, 3, 4, 1,
-                                                                                                             2)
-
-                x_lateral_bin_reshaped = x_lateral_bin_reshaped * self.mask
-                x_lateral_bin = x_lateral_bin_reshaped.detach().permute(0, 3, 4, 1, 2).reshape(x_lateral_bin.shape)
 
             stats = {
                 "l1/avg_support_active": x_lateral[x_lateral_bin > 0].mean().item(),
@@ -591,12 +578,12 @@ class LateralNetwork(pl.LightningModule):
         images_orig = [images_orig_padded[i, metadata[i]['pad'][0]:-metadata[i]['pad'][1], metadata[i]['pad'][2]:-metadata[i]['pad'][3]] for i in range(images_orig_padded.shape[0])]
 
         # A list of features with size (timesteps + avg. over time, channels, alternative channels, w, h)
-        lateral_features = torch.concat(lateral_features, dim=0).squeeze()
+        lateral_features = torch.concat(lateral_features, dim=0).squeeze(dim=1) #15x4x150x32x32
         lateral_features = lateral_features.reshape(lateral_features.shape[0], lateral_features.shape[1], self.conf['lateral_model']['channels'], self.conf['n_alternative_cells'], 32, 32)
         lateral_features = [lateral_features[i, :, :, :, metadata[i]['pad'][0]:-metadata[i]['pad'][1], metadata[i]['pad'][2]:-metadata[i]['pad'][3]] for i in range(lateral_features.shape[0])]
 
         # A list of features_f with size (timesteps + avg. over time, channels, alternative channels, w, h)
-        lateral_features_f = torch.concat(lateral_features_f, dim=0).squeeze()
+        lateral_features_f = torch.concat(lateral_features_f, dim=0).squeeze(dim=1)
         lateral_features_f = lateral_features_f.reshape(lateral_features_f.shape[0], lateral_features_f.shape[1], self.conf['lateral_model']['channels'], self.conf['n_alternative_cells'], 32, 32)
         lateral_features_f = [lateral_features_f[i, :, :, :, metadata[i]['pad'][0]:-metadata[i]['pad'][1], metadata[i]['pad'][2]:-metadata[i]['pad'][3]] for i in range(lateral_features_f.shape[0])]
 
@@ -622,14 +609,15 @@ class LateralNetwork(pl.LightningModule):
 
         # Same plot but binarize all alternative channel (don't know which alternative channel is active)
         lateral_features_mask_bin = [torch.argmax(torch.where(lateral_features_bg[i], 0, 1), dim=1) for i in range(len(lateral_features))]
-        for img, features in zip(images_orig, lateral_features_mask_bin):
-            fig, axs = plt.subplots(features.shape[0], 2, figsize=(20, 4))
+        for count, (img, features, metad) in enumerate(zip(images_orig, lateral_features_mask_bin, metadata)):
+            fig, axs = plt.subplots(features.shape[0], 2, figsize=(4, 10))
             for i in range(features.shape[0]):
                 t = i if i < features.shape[0] - 1 else "avg"
-                _plot_arc(axs[i, 0], f"Input {metadata[i]['task']}", img.cpu().numpy())
+                _plot_arc(axs[i, 0], f"Input {metad['task']}", img.cpu().numpy())
                 _plot_arc(axs[i, 1], f"Lat. T={t}", features[i].cpu().numpy())
 
             plt.tight_layout()
+            plt.savefig(f"../tmp/arc/arc_{count}.png")
             plt.show()
 
 

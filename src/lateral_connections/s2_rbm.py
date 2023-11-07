@@ -11,6 +11,7 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from data import plot_images
+from data.custom_datasets.arc import get_colormap
 from models.lightning_modules.lightning_base import BaseLitModule
 from tools import torch_optim_from_conf
 
@@ -126,9 +127,15 @@ class L2RBM(BaseLitModule):
         return super().on_epoch_end()
 
     def _normalize_image_list(self, img_list):
-        img_list = torch.stack([i.squeeze() for i in img_list])
-        img_list = (img_list - img_list.min()) / (img_list.max() - img_list.min() + 1e-9)
-        img_list = [img_list[i] for i in range(img_list.shape[0])]
+        try:
+            img_list = torch.stack([i.squeeze() for i in img_list])
+            img_list = (img_list - img_list.min()) / (img_list.max() - img_list.min() + 1e-9)
+            img_list = [img_list[i] for i in range(img_list.shape[0])]
+        except RuntimeError:
+            min_ = min([torch.min(i) for i in img_list])
+            max_ = max([torch.max(i) for i in img_list])
+            img_list = [(i - min_) / (max_ - min_ + 1e-9) for i in img_list]
+
         return img_list
 
     def plot_samples(self, img, activations_l2, show_plot):
@@ -137,7 +144,7 @@ class L2RBM(BaseLitModule):
             for batch_idx in range(img_i.shape[0]):
                 plt_images, plt_titles = [], []
                 for view_idx in range(act_i.shape[2]):
-                    plt_images.append(img_i[batch_idx])
+                    plt_images.append(torch.argmax(img_i[batch_idx], dim=0))
                     plt_titles.append(f"B={batch_idx}")
                     for feature_idx in range(act_i.shape[3]):
                         plt_images.append(act_i[batch_idx, :, view_idx, feature_idx])
@@ -149,6 +156,6 @@ class L2RBM(BaseLitModule):
                     fig_fp = Path(fig_fp) / f"l2_B={batch_idx}.png"
                 plt_images = self._normalize_image_list(plt_images)
                 plot_images(images=plt_images, titles=plt_titles, max_cols=act_i.shape[3] + 1, plot_colorbar=True,
-                            vmin=0, vmax=1, fig_fp=fig_fp, show_plot=show_plot)
+                            vmin=0, vmax=9, fig_fp=fig_fp, show_plot=show_plot, interpolation='none', cmap=get_colormap())
                 fig_fps.append(fig_fp)
         return fig_fps
