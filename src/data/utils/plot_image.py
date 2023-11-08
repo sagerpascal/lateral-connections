@@ -6,7 +6,6 @@ import torch
 import torchvision.transforms as T
 from PIL.Image import Image
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-import matplotlib.colors as colors
 
 def undo_norm(img: torch.Tensor, mean: torch.Tensor, std: torch.Tensor):
     """
@@ -131,11 +130,7 @@ def plot_images(
             fig.colorbar(im, cax=cax, orientation='vertical')
 
         if masks is not None and mask is not None:
-            cmap = plt.cm.get_cmap('tab20')
-            cmaplist = [cmap(i) for i in range(cmap.N)]
-            cmaplist[0] = (0, 0, 0, 1.0)
-            cmap = colors.LinearSegmentedColormap.from_list(f'tab20_modified', cmaplist, cmap.N)
-            ax.imshow(mask, alpha=0.7, cmap=cmap, interpolation=interpolation_, vmin=mask_vmin, vmax=mask_vmax)
+            ax.imshow(mask, alpha=0.6, cmap='jet', interpolation=interpolation_, vmin=mask_vmin, vmax=mask_vmax)
 
         if lbl is not None:
             lbl = str(lbl.item()) if isinstance(lbl, torch.Tensor) else lbl
