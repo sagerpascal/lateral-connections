@@ -61,9 +61,9 @@ def _get_dataset(
         valid_set = EightBitDataset(transform=transform, **dataset_config['valid_dataset_params'])
         test_set = EightBitDataset(transform=transform, **dataset_config['test_dataset_params'])
     elif dataset_name == "arc":
-        train_set = ArcDataset()
+        train_set = ArcDataset(add_noise=False)
         valid_set = None
-        test_set = ArcDataset()
+        test_set = ArcDataset(add_noise=True)
     else:
         raise ValueError("Unknown dataset name: {}".format(dataset_name))
 

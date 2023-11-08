@@ -1,7 +1,8 @@
 import json
+import random
 from pathlib import Path
 from typing import List, Literal, Tuple
-
+import torch.nn.functional as F
 import numpy as np
 import torch
 from matplotlib.colors import LinearSegmentedColormap
@@ -10,7 +11,8 @@ from torch.utils.data import Dataset
 
 class ArcDataset(Dataset):
 
-    def __init__(self):
+    def __init__(self, add_noise: bool = False):
+        self.add_noise = add_noise
         self.path = Path('../data/arc_subset.json')
         self.tasks = self.load_tasks()
         self.tasks = self.load_tasks()
@@ -41,6 +43,21 @@ class ArcDataset(Dataset):
             pad_right = final_size - data.shape[1] - pad_left
             metadata['pad'] = (pad_left, pad_right, pad_top, pad_bottom)
             data = torch.nn.functional.pad(data, (pad_left, pad_right, pad_top, pad_bottom), "constant", 0)
+
+        if self.add_noise:
+            # data = data.argmax(dim=2).float()
+
+            noise_probability = 0.01
+            noise = torch.rand_like(data)
+            noise_indices = random.sample(range(noise.numel()), int((1 - noise_probability) * noise.numel()))
+            noise_s = noise.shape
+            noise = noise.view(-1)
+            noise[noise_indices] = 0
+            noise = noise.view(noise_s)
+
+            data = (data + (noise * 10).round()) % 10
+            # data = F.one_hot(data.long(), num_classes=10)
+            # data = data.permute(0, 1, 4, 2, 3).float()
 
         if one_hot:
             data = torch.nn.functional.one_hot(data.to(torch.int64), num_classes=10).permute(2, 0, 1).float()
