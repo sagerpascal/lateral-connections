@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html  lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+      <title>Results</title>
+    
+          <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+          <link rel="stylesheet" href="../_static/theme.css " type="text/css" />
+      
+      <!-- sphinx script_files -->
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+        <script src="../_static/doctools.js"></script>
+        <script src="../_static/sphinx_highlight.js"></script>
+        <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+      
+      <!-- bundled in js (rollup iife) -->
+      <!-- <script src="../_static/theme-vendors.js"></script> -->
+      <script src="../_static/theme.js" defer></script>
+    
+  <link rel="index" title="Index" href="../genindex.html" />
+  <link rel="search" title="Search" href="../search.html" />
+  <link rel="prev" title="Thesis" href="../thesis.html" /> 
+  </head>
+
+  <body>
+    <div id="app">
+    <div class="theme-container" :class="pageClasses"><navbar @toggle-sidebar="toggleSidebar">
+  <router-link to="../index.html" class="home-link">
+    
+      <span class="site-name">Lateral Connections</span>
+    
+  </router-link>
+
+  <div class="links">
+    <navlinks class="can-hide">
+
+
+
+    </navlinks>
+  </div>
+</navbar>
+
+      
+      <div class="sidebar-mask" @click="toggleSidebar(false)">
+      </div>
+        <sidebar @toggle-sidebar="toggleSidebar">
+          
+          <navlinks>
+            
+
+
+
+            
+          </navlinks><div id="searchbox" class="searchbox" role="search">
+  <div class="caption"><span class="caption-text">Quick search</span>
+    <div class="searchformwrapper">
+      <form class="search" action="../search.html" method="get">
+        <input type="text" name="q" />
+        <input type="submit" value="Search" />
+        <input type="hidden" name="check_keywords" value="yes" />
+        <input type="hidden" name="area" value="default" />
+      </form>
+    </div>
+  </div>
+</div><div class="sidebar-links" role="navigation" aria-label="main navigation">
+  
+    <div class="sidebar-group">
+      <p class="caption">
+        <span class="caption-text"><a href="../index.html#self-organisation-in-a-biologically-inspired-learning-framework-based-on-bernoulli-neurons">Contents</a></span>
+      </p>
+      <ul class="current">
+        
+          <li class="toctree-l1 ">
+            
+              <a href="../presentation.html" class="reference internal ">Presentation</a>
+            
+
+            
+          </li>
+
+        
+          <li class="toctree-l1 ">
+            
+              <a href="../thesis.html" class="reference internal ">Thesis</a>
+            
+
+            
+          </li>
+
+        
+          <li class="toctree-l1 current">
+            
+              <a href="#" class="reference internal current">Results</a>
+            
+
+            
+              <ul>
+                
+                  <li class="toctree-l2"><a href="#rotating-line" class="reference internal">Rotating Line</a></li>
+                
+                  <li class="toctree-l2"><a href="#noise-in-the-input" class="reference internal">Noise in the Input</a></li>
+                
+                  <li class="toctree-l2"><a href="#interrupted-line" class="reference internal">Interrupted Line</a></li>
+                
+              </ul>
+            
+          </li>
+
+        
+      </ul>
+    </div>
+  
+</div>
+        </sidebar>
+
+      <page>
+          <div class="body-header" role="navigation" aria-label="navigation">
+  
+  <ul class="breadcrumbs">
+    <li><a href="../index.html">Docs</a> &raquo;</li>
+    
+    <li>Results</li>
+  </ul>
+  
+
+  <ul class="page-nav">
+  <li class="prev">
+    <a href="../thesis.html"
+       title="previous chapter">← Thesis</a>
+  </li>
+</ul>
+  
+</div>
+<hr>
+          <div class="content" role="main" v-pre>
+            
+  <section id="results">
+<h1>Results<a class="headerlink" href="#results" title="Permalink to this heading">¶</a></h1>
+<p>In the following, video visualisations of the results presented in the thesis are shown.
+The input into the model is a line that is rotating counter-clockwise around the origin.
+This input is fed into the sensory system that is shown in the center of the video.
+The sensory system has 4 filters to extract different features. These features are visualised with different colors.</p>
+<p>The output of the sensory system is fed into the <em>S1</em>, the network with lateral connections building net fragments.
+These net fragments are visualised in the top right corner of the video, using the same colors per feature channel as the sensory system.</p>
+<p>The net fragments are fed into <em>S2</em>, that maps the net fragments to a 1D representation of length <span class="math notranslate nohighlight">\(16\)</span>. This 1D vector is visualised
+as circles in the bottom center of the video. Thereby, a green circle corresponds to an active neuron, while a red circle corresponds
+to an inactive neuron.
+The reconstructed net fragment of <em>S2</em> is shown in the bottom right corner of the video.</p>
+<p>In the following, the results from multiple experiments are visualised. For each experiment, two videos are shown:
+Both videos are produced by the same model using the same weights. However, the first
+video shows the activations if a fixed threshold of <span class="math notranslate nohighlight">\(0.5\)</span> (<em>S1</em>) and <span class="math notranslate nohighlight">\(0.9\)</span> (<em>S2</em>) for each neuron is used (i.e. probabilities <span class="math notranslate nohighlight">\(\geq 0.5\)</span> / <span class="math notranslate nohighlight">\(\geq 0.9\)</span> lead to an activation of a neuron).
+This helps to better understand the behaviour of the model.
+The second video shows the activations if the neurons are sampled from a Bernoulli distribution.
+This corresponds to the behaviour of the model during training.</p>
+<p>Please not that the model has only seen horizontal, vertical, and diagonal lines during training.
+Therefore, <em>S2</em> only stored these lines in its memory.
+However, <em>S1</em> can also build net fragments for data not seen during training.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>If the videos are not shown, the encoding is not supported by your browser.
+Please try a Chromium-based browser (e.g. Google Chrome, Brave Browser, etc.).</p>
+</div>
+<section id="rotating-line">
+<h2>Rotating Line<a class="headerlink" href="#rotating-line" title="Permalink to this heading">¶</a></h2>
+<p>The following videos show the behaviour of the model if the line is rotated around the origin.</p>
+<p><strong>Fixed Threshold</strong></p>
+<video controls="True" preload="auto" width="450"><source src="../_static/results/final_results/threshold/normal.mp4" type="video/mp4"></video><p><strong>Bernoulli Sampling</strong></p>
+<video controls="True" preload="auto" width="450"><source src="../_static/results/final_results/bernoulli/normal.mp4" type="video/mp4"></video></section>
+<section id="noise-in-the-input">
+<h2>Noise in the Input<a class="headerlink" href="#noise-in-the-input" title="Permalink to this heading">¶</a></h2>
+<p>The following videos show the behaviour of the model if each <em>input</em> pixel is flipped with a probability of <span class="math notranslate nohighlight">\(0.005\)</span>.
+The model is not able to filter all noise. A reason is that each filter activates quite strongly to noise in the input data,
+leading to many active neurons at the same position. This noise roughly correspond to the same pattern that can
+be observed at line endings. Therefore, the noise receives lateral support and is not properly suppressed by inhibitory signals.</p>
+<p><strong>Fixed Threshold</strong></p>
+<video controls="True" preload="auto" width="450"><source src="../_static/results/final_results/threshold/005_noise.mp4" type="video/mp4"></video><p><strong>Bernoulli Sampling</strong></p>
+<video controls="True" preload="auto" width="450"><source src="../_static/results/final_results/bernoulli/005_noise.mp4" type="video/mp4"></video><section id="noise-in-the-feature-channels">
+<h3>Noise in the Feature Channels<a class="headerlink" href="#noise-in-the-feature-channels" title="Permalink to this heading">¶</a></h3>
+<p>The same experiment is repeated, but this time the noise is added to each <em>feature channel</em> after the filter has been applied.
+Thus, the same amount of noise is added, but not at the same position per channel.
+As it can be observed, the model is able to filter the noise much better.
+The reason is that the noise is not concentrated at the same position per channel, but is distributed over the whole image.
+Therefore, the noise does not receive enough lateral support and is suppressed.</p>
+<p><strong>Fixed Threshold</strong></p>
+<video controls="True" preload="auto" width="450"><source src="../_static/results/final_results/threshold/005_noise_per_channel.mp4" type="video/mp4"></video><p><strong>Bernoulli Sampling</strong></p>
+<video controls="True" preload="auto" width="450"><source src="../_static/results/final_results/bernoulli/005_noise_per_channel.mp4" type="video/mp4"></video></section>
+</section>
+<section id="interrupted-line">
+<h2>Interrupted Line<a class="headerlink" href="#interrupted-line" title="Permalink to this heading">¶</a></h2>
+<p>The following videos show the behaviour of the model if the line is interrupted in the middle.
+Due to the lateral support, the model is able to reconstruct the line if up to <span class="math notranslate nohighlight">\(8\)</span> pixels are missing.
+This is quite remarkable, as the model has never seen such a line during training and the lateral support range
+is limited to <span class="math notranslate nohighlight">\(11\)</span> pixels.</p>
+<section id="missing-pixels">
+<h3>5 Missing Pixels<a class="headerlink" href="#missing-pixels" title="Permalink to this heading">¶</a></h3>
+<p><strong>Fixed Threshold</strong></p>
+<video controls="True" preload="auto" width="450"><source src="../_static/results/final_results/threshold/5_black_pixels.mp4" type="video/mp4"></video><p><strong>Bernoulli Sampling</strong></p>
+<video controls="True" preload="auto" width="450"><source src="../_static/results/final_results/bernoulli/5_black_pixels.mp4" type="video/mp4"></video></section>
+<section id="id1">
+<h3>8 Missing Pixels<a class="headerlink" href="#id1" title="Permalink to this heading">¶</a></h3>
+<p><strong>Fixed Threshold</strong></p>
+<video controls="True" preload="auto" width="450"><source src="../_static/results/final_results/threshold/8_black_pixels.mp4" type="video/mp4"></video><p><strong>Bernoulli Sampling</strong></p>
+<video controls="True" preload="auto" width="450"><source src="../_static/results/final_results/bernoulli/8_black_pixels.mp4" type="video/mp4"></video></section>
+<section id="id2">
+<h3>10 Missing Pixels<a class="headerlink" href="#id2" title="Permalink to this heading">¶</a></h3>
+<p><strong>Fixed Threshold</strong></p>
+<video controls="True" preload="auto" width="450"><source src="../_static/results/final_results/threshold/10_black_pixels.mp4" type="video/mp4"></video><p><strong>Bernoulli Sampling</strong></p>
+<video controls="True" preload="auto" width="450"><source src="../_static/results/final_results/bernoulli/10_black_pixels.mp4" type="video/mp4"></video></section>
+</section>
+</section>
+
+
+          </div>
+          <div class="page-nav">
+            <div class="inner"><ul class="page-nav">
+  <li class="prev">
+    <a href="../thesis.html"
+       title="previous chapter">← Thesis</a>
+  </li>
+</ul><div class="footer" role="contentinfo">
+      &#169; Copyright 2023, Pascal Sager.
+    <br>
+    Created using <a href="http://sphinx-doc.org/">Sphinx</a> 7.0.1 with <a href="https://github.com/schettino72/sphinx_press_theme">Press Theme</a> 0.8.0.
+</div>
+            </div>
+          </div>
+      </page>
+    </div></div>
+    
+    
+  </body>
+</html>
