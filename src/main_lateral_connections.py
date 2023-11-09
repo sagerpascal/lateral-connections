@@ -177,13 +177,24 @@ def cycle(
     with torch.no_grad():
         features = feature_extractor(batch)
 
+    features = feature_extractor.binarize_features(features)
+
+    if mode == "eval":
+        features_s = features.shape
+        num_elements = features.numel()
+        num_flips = int(0.005 * num_elements)
+        random_mask = torch.randperm(num_elements)[:num_flips]
+        random_mask = torch.zeros(num_elements, dtype=torch.bool).scatter(0, random_mask, 1)
+        features = features.view(-1)
+        features[random_mask] = 1.0 - features[random_mask]
+        features = features.view(features_s)
+
     lateral_network.new_sample()
     z = None
 
     input_features, lateral_features, lateral_features_f, l2_features, l2h_features = [], [], [], [], []
     for view_idx in range(features.shape[1]):
         x_view_features = features[:, view_idx, ...]
-        x_view_features = feature_extractor.binarize_features(x_view_features)
 
         # Add noise to the input features -> should be removed by net fragments
         # x_view_features = np.array(x_view_features.detach().cpu())

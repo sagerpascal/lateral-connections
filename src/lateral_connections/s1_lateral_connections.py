@@ -73,6 +73,7 @@ class LateralLayer(nn.Module):
         self.n_alternative_cells = n_alternative_cells
         self.in_channels = in_channels
         self.out_channels = out_channels
+        self.in_feature_channels = self.in_channels - self.out_channels
         self.locality_size = locality_size
         self.neib_size = 2 * self.locality_size + 1
         self.kernel_size = (self.neib_size, self.neib_size)
@@ -166,7 +167,7 @@ class LateralLayer(nn.Module):
         if self.n_alternative_cells <= 1:  # TODO: is this if/else still necessary?
             for co in range(self.out_channels):
                 for ci in range(self.in_channels):
-                    if ci == co or ci + 4 == co:
+                    if ci == co or ci + self.in_feature_channels == co:
                         cii = ci * self.kernel_size[0] * self.kernel_size[1] + self.locality_size * self.kernel_size[
                             1] + self.locality_size
                         W_lateral[co, cii, 0, 0] = 1
@@ -174,7 +175,7 @@ class LateralLayer(nn.Module):
         else:
             for co in range(self.out_channels):
                 for ci in range(self.in_channels):
-                    if (ci < 4 and co // self.n_alternative_cells == ci) or ci == co + 4:
+                    if (ci < self.in_feature_channels and co // self.n_alternative_cells == ci) or ci == co + self.in_feature_channels:
                         cii = ci * self.kernel_size[0] * self.kernel_size[1] + self.locality_size * self.kernel_size[
                             1] + self.locality_size
                         W_lateral[co, cii, 0, 0] = 1
@@ -273,15 +274,14 @@ class LateralLayer(nn.Module):
                     # Shape w2: 5324, 40, 1
                     # Shape x2: 5324, 1, 1024
                     d2 = self.in_channels * self.kernel_size[0] * self.kernel_size[1]
-                    w2 = (self.W_lateral.reshape(40, d2, 1).permute(1, 0, 2) > 0).float()
+                    w2 = (self.W_lateral.reshape(self.out_channels, d2, 1).permute(1, 0, 2) > 0).float()
                     x2 = x_rearranged.reshape(d2, 1, 1024).permute(0, 1, 2)
-                    pos_corr3 = torch.matmul(w2, x2)  # 40,5324,1 * 40,1,1024
-                    neg_corr3 = torch.matmul(w2, 1 - x2) + torch.matmul(1 - w2, x2)
-                    pos_corr3 = pos_corr3.permute(2, 1, 0).reshape(1024, 4, 10, d2)
-                    neg_corr3 = neg_corr3.permute(2, 1, 0).reshape(1024, 4, 10, d2)
-
-                    pos_corr = pos_corr3
-                    neg_corr = neg_corr3
+                    pos_corr = torch.matmul(w2, x2)  # 40,5324,1 * 40,1,1024
+                    neg_corr = torch.matmul(w2, 1 - x2) + torch.matmul(1 - w2, x2)
+                    pos_corr = pos_corr.permute(2, 1, 0).reshape(1024, self.in_feature_channels,
+                                                                   self.n_alternative_cells, d2)
+                    neg_corr = neg_corr.permute(2, 1, 0).reshape(1024, self.in_feature_channels,
+                                                                   self.n_alternative_cells, d2)
 
                     # correlation shape: (batch_size*H*W, out_channels, alt_channels, in_channels*kernel_w*kernel_h)
                     # Goal for every position in the channel 0, one of the alternative output channels should be active
@@ -342,7 +342,7 @@ class LateralLayer(nn.Module):
                     best_channel = best_channel.reshape((x_lateral_bin.shape[0], ) + x_lateral_bin.shape[2:] + (-1, ))
 
                     x_lateral_bin_reshaped = x_lateral_bin.reshape((x_lateral_bin.shape[0], x_lateral_bin.shape[1] // self.n_alternative_cells, self.n_alternative_cells) + x_lateral_bin.shape[2:]).permute(0, 3, 4, 1, 2)
-                    self.mask = (torch.arange(0, 10).view(1, 1, 1, 1, -1).cuda() == best_channel.unsqueeze(-1))
+                    self.mask = (torch.arange(0, self.n_alternative_cells).view(1, 1, 1, 1, -1).cuda() == best_channel.unsqueeze(-1))
                     assert torch.all(torch.sum(self.mask, dim=4) == 1)
 
                 else:
