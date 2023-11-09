@@ -647,15 +647,15 @@ class LateralNetwork(pl.LightningModule):
                     files.extend([if_fp, am_fp, hm_fp, lo_fp])
                 else:
                     if_fp, am_fp, hm_fp, lo_fp = None, None, None, None
-                if plot_input_features:
-                    _plot_input_features(img_i[batch_idx], features_i[batch_idx], input_features_i[batch_idx],
-                                         fig_fp=if_fp, show_plot=show_plot)
-                elif if_fp is not None:
-                    files.remove(if_fp)
-                _plot_lateral_activation_map(lateral_features_i[batch_idx],
-                                             fig_fp=am_fp, show_plot=show_plot)
-                _plot_lateral_heat_map(lateral_features_f_i[batch_idx],
-                                       fig_fp=hm_fp, show_plot=show_plot)
+                # if plot_input_features:
+                #     _plot_input_features(img_i[batch_idx], features_i[batch_idx], input_features_i[batch_idx],
+                #                          fig_fp=if_fp, show_plot=show_plot)
+                # elif if_fp is not None:
+                #     files.remove(if_fp)
+                # _plot_lateral_activation_map(lateral_features_i[batch_idx],
+                #                              fig_fp=am_fp, show_plot=show_plot)
+                # _plot_lateral_heat_map(lateral_features_f_i[batch_idx],
+                #                        fig_fp=hm_fp, show_plot=show_plot)
                 _plot_lateral_output(img_i[batch_idx], lateral_features_i[batch_idx],
                                      fig_fp=lo_fp, show_plot=show_plot)
 

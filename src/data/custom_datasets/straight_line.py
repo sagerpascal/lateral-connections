@@ -1,6 +1,7 @@
 import random
 from typing import Callable, List, Literal, Optional, Tuple
 
+import math
 import numpy as np
 import torch
 from PIL import Image, ImageDraw
@@ -276,17 +277,16 @@ def _plot_some_samples():
         transforms.ToTensor(),
     ])
 
-    dataset = StraightLine(split="test", img_h=32, img_w=32, num_images=12, num_aug_versions=9, num_channels=1,
-                           transform=transform, vertical_horizontal_only=True, noise=0.00,
-                           aug_strategy='trajectory', aug_range=15, n_black_pixels=5)
+    dataset = StraightLine(split="train", num_images=8, num_aug_versions=0, num_channels=1,
+                           transform=transform, vertical_horizontal_only=False, noise=0.00)
 
-    fig, axs = plt.subplots(12, 10, figsize=(10, 12))
-    for i in range(12):
+    fig, axs = plt.subplots(1, 8, figsize=(16, 2))
+    for i in range(8):
         img, meta = dataset.get_item(i, n_black_pixels=0)
-        for idx in range(img.shape[0]):
-            j = i * 10 + idx
-            axs[j // 10, j % 10].imshow(img[idx].squeeze(), vmin=0, vmax=1, cmap='gray')
-            axs[j // 10, j % 10].axis('off')
+        alpha = -round(math.atan((meta['line_coords'][1][1]-meta['line_coords'][0][1]) / (meta['line_coords'][1][0]-meta['line_coords'][0][0])) * 180 / math.pi, 2)
+        axs[i].set_title(f"{alpha:.2f}°")
+        axs[i].imshow(torch.where(img==1, 0, 1).squeeze(), vmin=0, vmax=1.2, cmap='gray')
+        axs[i].axis('off')
     plt.tight_layout()
     plt.show()
 
