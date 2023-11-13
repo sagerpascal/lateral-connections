@@ -22,11 +22,11 @@ def _warn_different_configs(config: Dict[str, Optional[Any]], config_old: Dict[s
     changed_items = {c: d for c, d in diff.get("values_changed", {}).items() if
                      not bool([k for k in keys_ignored if k in c])}
 
-    if len(removed_items) + len(added_items) + len(changed_items) > 0:
-        warnings.warn(
-            f"Configurations Differ:\n\tRemoved Items: {removed_items}\n\tAdded Items: {added_items}\n\tChanged "
-            f"Items: {changed_items}")
-        input("Press Enter to continue...")
+    # if len(removed_items) + len(added_items) + len(changed_items) > 0:
+    #     warnings.warn(
+    #         f"Configurations Differ:\n\tRemoved Items: {removed_items}\n\tAdded Items: {added_items}\n\tChanged "
+    #         f"Items: {changed_items}")
+    #     input("Press Enter to continue...")
 
 def merge_configs(
         config: Dict[str, Optional[Any]],

@@ -6,7 +6,7 @@ dataset:
   num_workers: 0
 
 run:
-  n_epochs: 15
+  n_epochs: 101
   current_epoch: 0
   plots:
     enable: True

@@ -1,1 +1,1 @@
-from stage_1.feature_extractor import *
+from lateral_connections.feature_extractor import *

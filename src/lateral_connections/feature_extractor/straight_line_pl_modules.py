@@ -9,6 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from lightning import Fabric
 from matplotlib import pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from torch import Tensor
 from torchvision import utils
 
@@ -207,20 +208,28 @@ class FixedFilterFeatureExtractor(pl.LightningModule):
             ax.set_xlabel(f'Bins form {min:.4f} to {max:.4f}')
             ax.set_title(title)
 
-        def _plot_weights(ax, weight, title):
+        def _plot_weights(fig, ax, weight, title):
             weight_img_list = [weight[i, j].unsqueeze(0) for j in range(weight.shape[1]) for i in
                                range(weight.shape[0])]
             # Order is [(0, 0), (1, 0), ..., (3, 0), (0, 1), ..., (3, 7)]
             # The columns show the output channels, the rows the input channels
             grid = utils.make_grid(weight_img_list, nrow=weight.shape[0], normalize=True, scale_each=True, pad_value=1)
-            ax.imshow(grid.permute(1, 2, 0), interpolation='none')
+            #grid = grid / 2 - 1/6  # Normalize to [-1/6, 1/3]
+            im = ax.imshow(grid[:, 2:-2, 2:-2].permute(1, 2, 0), interpolation='none', cmap="gray")#, vmin=-1/6, vmax=1/3)
+            divider = make_axes_locatable(ax)
+            cax = divider.append_axes('right', size='5%', pad=0.05)
+            fig.colorbar(im, cax=cax, orientation='vertical')
             ax.set_title(title)
+            ax.set_xticks([])
+            ax.set_yticks([])
+            ax.set_xticklabels([])
+            ax.set_yticklabels([])
 
         files = []
         for layer, weight in [('feature extractor', self.model.weight)]:
-            fig, axs = plt.subplots(1, 2, figsize=(8, 5))
+            fig, axs = plt.subplots(1, 2, figsize=(16, 10))
             _hist_plot(axs[0], weight.detach().cpu(), f"Weight distribution ({layer})")
-            _plot_weights(axs[1], weight[:20, :20, ...].detach().cpu(), f"Weight matrix ({layer})")
+            _plot_weights(fig, axs[1], weight[:20, :20, ...].detach().cpu(), f"Weight matrix ({layer})")
             plt.tight_layout()
 
             fig_fp = self.conf['run']['plots'].get('store_path', None)

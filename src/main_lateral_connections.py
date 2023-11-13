@@ -88,12 +88,12 @@ def parse_args(parser: Optional[argparse.ArgumentParser] = None):
     return args
 
 
-def configure() -> Dict[str, Optional[Any]]:
+def configure(parser: Optional[argparse.ArgumentParser] = None) -> Dict[str, Optional[Any]]:
     """
     Load the config based on the given console args.
     :return: Configuration dict.
     """
-    args = parse_args()
+    args = parse_args(parser)
     config = get_config(args.config, args)
     torch.backends.cudnn.deterministic = True
     if not torch.cuda.is_available():
@@ -179,7 +179,7 @@ def cycle(
 
     features = feature_extractor.binarize_features(features)
 
-    if mode == "eval":
+    if False and mode == "eval":
         features_s = features.shape
         num_elements = features.numel()
         num_flips = int(0.005 * num_elements)
@@ -349,7 +349,7 @@ def single_eval_epoch(
 
     assert not wandb_b or wandb_b and store_plots, "Wandb logging requires storing the plots."
 
-    if plot or wandb_b or store_plots:
+    if False:
         if epoch == 0:
             feature_extractor.plot_model_weights(show_plot=plot)
 #
