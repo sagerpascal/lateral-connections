@@ -690,12 +690,18 @@ class LateralNetwork(pl.LightningModule):
                 plt_images.extend([img[view_idx], img[view_idx]])
                 plt_titles.extend([f"Input view {view_idx}", f"Extracted Features {view_idx}"])
                 background = torch.all((lateral_features[view_idx, -1] == 0), dim=0)
-                foreground = torch.argmax(lateral_features[view_idx, -1], dim=0)
-                calc_mask = torch.where(~background, foreground + 10, 0.) # +10 to make background very different
+
+                channel_activations = (torch.sum(lateral_features[view_idx, -1].reshape(4, 10, 32, 32), dim=1) > 0).float()
+                result = torch.zeros_like(channel_activations)[0]
+                for i in range(4):
+                    result += channel_activations[i] * 2**(i+1)
+
+                # foreground = torch.argmax(lateral_features[view_idx, -1], dim=0)
+                calc_mask = torch.where(~background, result + 10, 0.) # +10 to make background very different
                 plt_masks.extend([None, calc_mask])
             plt_images = self._normalize_image_list(plt_images)
             plot_images(images=plt_images, titles=plt_titles, masks=plt_masks, max_cols=2, plot_colorbar=False,
-                        vmin=0, vmax=1, mask_vmin=0, mask_vmax=lateral_features.shape[2] + 10, fig_fp=fig_fp,
+                        vmin=0, vmax=1, mask_vmin=0, mask_vmax=32 + 10, fig_fp=fig_fp,
                         show_plot=show_plot)
 
         fig_fp = self.conf['run']['plots'].get('store_path', None)
@@ -715,19 +721,20 @@ class LateralNetwork(pl.LightningModule):
                 else:
                     if_fp, am_fp, hm_fp, lo_fp = None, None, None, None
                 if plot_input_features:
-                    _plot_input_features(img_i[batch_idx], features_i[batch_idx], input_features_i[batch_idx],
-                                         fig_fp=if_fp, show_plot=show_plot)
+                    pass
+                    # _plot_input_features(img_i[batch_idx], features_i[batch_idx], input_features_i[batch_idx],
+                    #                      fig_fp=if_fp, show_plot=show_plot)
                 elif if_fp is not None:
                     files.remove(if_fp)
                 # _plot_lateral_activation_map(lateral_features_i[batch_idx],
                 #                              fig_fp=am_fp, show_plot=show_plot)
                 # _plot_lateral_heat_map(lateral_features_f_i[batch_idx],
                 #                        fig_fp=hm_fp, show_plot=show_plot)
-                # _plot_lateral_output(img_i[batch_idx], input_features_i[batch_idx], lateral_features_i[batch_idx],
-                #                      fig_fp=lo_fp, show_plot=show_plot)
+                _plot_lateral_output(img_i[batch_idx],  lateral_features_i[batch_idx],
+                                     fig_fp=f"../tmp/mnist_stuff/{i}.png", show_plot=show_plot)
 
-                plot_alternative_cells(img_i[batch_idx], input_features_i[batch_idx], lateral_features_i[batch_idx],
-                                       self.conf["n_alternative_cells"], fig_fp=lo_fp, show_plot=show_plot)
+                # plot_alternative_cells(img_i[batch_idx], input_features_i[batch_idx], lateral_features_i[batch_idx],
+                #                        self.conf["n_alternative_cells"], fig_fp=lo_fp, show_plot=show_plot)
 
         return files
 

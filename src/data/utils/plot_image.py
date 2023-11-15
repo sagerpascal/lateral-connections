@@ -131,7 +131,7 @@ def plot_images(
             fig.colorbar(im, cax=cax, orientation='vertical')
 
         if masks is not None and mask is not None:
-            cmap = plt.cm.get_cmap('tab20')
+            cmap = plt.cm.get_cmap('viridis')
             cmaplist = [cmap(i) for i in range(cmap.N)]
             cmaplist[0] = (0, 0, 0, 1.0)
             cmap = colors.LinearSegmentedColormap.from_list(f'tab20_modified', cmaplist, cmap.N)

@@ -43,7 +43,7 @@ def _get_dataset(
 
         train_set = torch.utils.data.Subset(dataset, list(range(500)))
         valid_set = None
-        test_set = torch.utils.data.Subset(dataset, [0, 1, 2, 3, 4])
+        test_set = torch.utils.data.Subset(dataset, list(range(20)))
     elif dataset_name == "cifar10":
         train_set = CIFAR10(root=dataset_path, transform=transform, **dataset_config['train_dataset_params'])
         valid_set = None
