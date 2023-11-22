@@ -225,7 +225,7 @@ class LateralLayer(nn.Module):
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Dict[str, float]]:
         with torch.no_grad():
             x_rearranged = self.rearrange_input(x)
-
+            x_rearranged = torch.where(x_rearranged > 0.5, 1., 0.)
             assert torch.all(
                 (x_rearranged == 0.) | (x_rearranged == 1.)), "x_rearranged not binary -> Torch Config Error"
             x_lateral = F.conv2d(x_rearranged, self.W_lateral, padding="same", )
@@ -346,12 +346,12 @@ class LateralLayer(nn.Module):
                         1e-10 + x_lateral_norm_alt_max.reshape(x_lateral_norm_alt_max.shape + (1, 1, 1)))
                 x_lateral_norm = x_lateral_norm.reshape(x_lateral_norm_s)
 
-            square_factor = [1, 1.2, 1.4, 1.6, 1.8, 2.0]
+            # square_factor = [1.2, 1.4, 1.6, 2.2, 2.4, 2.6]
             # square_factor = [2.1, 2.2, 2.3, 2.4, 2.5, 2.6]
             if self.act_threshold == "bernoulli":
-                x_lateral_bin = torch.bernoulli(torch.clip(x_lateral_norm ** square_factor[self.ts], 0, 1))
+                x_lateral_bin = torch.bernoulli(torch.clip(x_lateral_norm ** self.square_factor[self.ts], 0, 1))
             else:
-                x_lateral_bin = (x_lateral_norm ** square_factor[self.ts] >= self.act_threshold).float()
+                x_lateral_bin = (x_lateral_norm ** self.square_factor[self.ts] >= self.act_threshold).float()
 
 
             stats = {

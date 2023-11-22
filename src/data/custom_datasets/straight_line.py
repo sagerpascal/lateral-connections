@@ -212,11 +212,11 @@ class StraightLine(Dataset):
             img = Image.fromarray(img.astype(np.uint8))
 
         # add noise
-        if noise > 0. or (self.split == 'val' or self.split == 'test') and (idx == 4 or idx == 5 or idx == 6 or idx == 7):
-            noise = noise if noise > 0. else 0.005
-            img = np.array(img)
-            img = img + np.random.choice(2, img.shape, p=[1 - noise, noise]) * 255
-            img = Image.fromarray(img.astype(np.uint8))
+        # if noise > 0. or (self.split == 'val' or self.split == 'test') and (idx == 4 or idx == 5 or idx == 6 or idx == 7):
+        #     noise = noise if noise > 0. else 0.005
+        #     img = np.array(img)
+        #     img = img + np.random.choice(2, img.shape, p=[1 - noise, noise]) * 255
+        #     img = Image.fromarray(img.astype(np.uint8))
 
         if self.transform:
             img = self.transform(img)
@@ -258,11 +258,11 @@ class StraightLine(Dataset):
             images.append(self._create_image(idx, aug_coords, noise=noise, n_black_pixels=n_black_pixels))
 
         images = torch.stack(images, dim=0) if self.num_aug_versions > 0 else images[0]
-        return images, {'line_coords': line_coords, 'aug_line_coords': aug_line_coords}
+        return images, {'line_coords': line_coords, 'aug_line_coords': aug_line_coords, 'angle': math.atan((line_coords[1][1]-line_coords[0][1]) / (1e-10+line_coords[1][0]-line_coords[0][0]))}
 
     def __getitem__(self, idx: int):
-        if (self.split == 'val' or self.split == 'test') and (idx == 8 or idx == 9 or idx == 10 or idx == 11):
-            return self.get_item(idx, n_black_pixels=1)
+        # if (self.split == 'val' or self.split == 'test') and (idx == 8 or idx == 9 or idx == 10 or idx == 11):
+        #     return self.get_item(idx, n_black_pixels=1)
         return self.get_item(idx)
 
 

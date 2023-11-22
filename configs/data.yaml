@@ -132,7 +132,7 @@ straightline:
     split: "test"
     vertical_horizontal_only: False
     aug_range: 0
-    num_images: 4
+    num_images: 10
     num_aug_versions: 0
     noise: 0.0
 

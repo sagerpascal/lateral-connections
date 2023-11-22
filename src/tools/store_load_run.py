@@ -77,5 +77,5 @@ def load_run(
     state = fabric.load(config['run']['load_state_path'])
     print_info(f"Loaded run from {config['run']['load_state_path']}", "Run State Loaded")
     config_old = state.pop("config")
-    config = merge_configs(config, config_old)
+    # config = merge_configs(config, config_old)
     return config, state

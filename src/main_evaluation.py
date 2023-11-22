@@ -1,4 +1,5 @@
 import argparse
+import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -11,6 +12,7 @@ from PIL import Image, ImageDraw, ImageFont
 from lightning import Fabric
 from torch import Tensor
 from tqdm import tqdm
+import torch.nn.functional as F
 
 from data.custom_datasets.straight_line import StraightLine
 from lateral_connections.s1_lateral_connections import LateralNetwork
@@ -32,7 +34,7 @@ def parse_args(parser: Optional[argparse.ArgumentParser] = None) -> argparse.Arg
     parser.add_argument("--n_samples",
                         type=int,
                         metavar="N",
-                        default=300,
+                        default=180,
                         help="Number of samples to evaluate."
                         )
     parser.add_argument('--simplified',
@@ -40,10 +42,11 @@ def parse_args(parser: Optional[argparse.ArgumentParser] = None) -> argparse.Arg
                         default=False,
                         help='Use simple dataset only containing lines with angels of 0°, 45°, -45°, and 90°.'
                         )
-    parser.add_argument('--add_noise',
-                        action='store_true',
-                        default=False,
-                        help='Add noise to evaluation samples.'
+    parser.add_argument("--noise",
+                        type=float,
+                        metavar="N",
+                        default=0.0,
+                        help="Ratio of noise to add."
                         )
     parser.add_argument("--line_interrupt",
                         type=int,
@@ -57,7 +60,16 @@ def parse_args(parser: Optional[argparse.ArgumentParser] = None) -> argparse.Arg
                         default=10,
                         help="Number of samples to evaluate."
                         )
-
+    parser.add_argument("--store_baseline_activations_path",
+                        type=str,
+                        default=None,
+                        help="Store baseline activations to compare models to."
+                        )
+    parser.add_argument("--load_baseline_activations_path",
+                        type=str,
+                        default=None,
+                        help="Load baseline activations to compare models to."
+                        )
     return parser
 
 
@@ -319,6 +331,40 @@ def analyze_noise(noise: Tensor, random_mask: Tensor, lateral_features: List[Ten
     return removed_noise_ratio.item()
 
 
+def analyze_recon_error(lateral_features: List[Tensor], baseline_lateral_features: List[Tensor]) -> Tuple[float, float, float]:
+    """
+    Analyzes the reconstruction error of the lateral features.
+
+    :param lateral_features:
+    :param baseline_lateral_features:
+    :return: The reconstruction error
+    """
+    lateral_features = lateral_features[-1].view(-1)
+    baseline_lateral_features = baseline_lateral_features[-1].view(-1)
+    accuracy = 1. - F.l1_loss(lateral_features, baseline_lateral_features)
+    recall = 1. - F.l1_loss(lateral_features[baseline_lateral_features > 0.], baseline_lateral_features[baseline_lateral_features > 0.])
+    precision = 1. - F.l1_loss(lateral_features[lateral_features > 0.], baseline_lateral_features[lateral_features > 0.])
+    return accuracy.item(), recall.item(), precision.item()
+
+
+def analyze_interrupt_line(img: Tensor, baseline_img: Tensor, lateral_features: List[Tensor], baseline_lateral_features: List[Tensor]) -> float:
+    """
+    Analyzes the reconstruction error of the lateral features.
+    :param img: The input image
+    :param baseline_img: The baseline input image
+    :param lateral_features: The lateral features
+    :param baseline_lateral_features: The baseline lateral features
+    :return: Reconstruction accuracy
+    """
+    baseline_img = baseline_img[-1].squeeze()
+    mask = torch.where(img != baseline_img, True, False).unsqueeze(0).repeat(lateral_features[-1].shape[1], 1, 1)
+    baseline_lateral_features = baseline_lateral_features[-1].squeeze(0)[mask]
+    lateral_features = lateral_features[-1].squeeze(0)[mask]
+    accuracy = 1. - F.l1_loss(lateral_features, baseline_lateral_features)
+    return accuracy.item()
+
+
+
 def predict_sample(
         config: Dict[str, Optional[Any]],
         fabric: Fabric,
@@ -326,7 +372,7 @@ def predict_sample(
         lateral_network: LateralNetwork,
         batch: Tensor,
         batch_idx: int,
-) -> Tuple[Tensor, Tensor, Tensor, Tensor, float]:
+) -> Tuple[Tensor, Tensor, Tensor, Tensor, float, float]:
     """
     Predicts the features for a given sample
     :param config: Configuration
@@ -344,10 +390,10 @@ def predict_sample(
         features = feature_extractor(batch.unsqueeze(0))
         features = feature_extractor.binarize_features(features).squeeze(1)
 
-        if config['add_noise']:
+        if config['noise'] > 0.:
             features_s = features.shape
             num_elements = features.numel()
-            num_flips = int(0.005 * num_elements)
+            num_flips = int(config['noise']  * num_elements)
             random_mask = torch.randperm(num_elements)[:num_flips]
             random_mask = torch.zeros(num_elements, dtype=torch.bool).scatter(0, random_mask, 1)
             features = features.view(-1)
@@ -371,9 +417,16 @@ def predict_sample(
 
     lateral_features = merge_alt_channels(config, lateral_features)
     lateral_features_float = merge_alt_channels(config, lateral_features_float)
-    removed_noise = analyze_noise(noise, random_mask, lateral_features) if config['add_noise'] else 0
+    removed_noise = analyze_noise(noise, random_mask, lateral_features) if config['noise'] > 0. else 0
+    if 'load_baseline_activations_path' in config and config['load_baseline_activations_path'] is not None:
+        t = torch.load(config['load_baseline_activations_path'])
+        recon_error = analyze_recon_error(lateral_features, t[0][batch_idx])
+        interrupt_line_recon = analyze_interrupt_line(batch[0], t[1][batch_idx], lateral_features, t[0][batch_idx])
+    else:
+        recon_error = (-1, -1, -1)
+        interrupt_line_recon = -1
     return (torch.stack(input), torch.stack(input_features), torch.stack(lateral_features),
-            torch.stack(lateral_features_float), removed_noise)
+            torch.stack(lateral_features_float), removed_noise, interrupt_line_recon, recon_error)
 
 
 def process_data(
@@ -392,23 +445,52 @@ def process_data(
     :param feature_extractor: Feature extractor
     :param lateral_network: Lateral network (L1)
     """
+    imgs_, l1_acts = [], []
     ci = CustomImage()
     avg_noise_meter = AverageMeter()
-    fp = f"../tmp/v2/{config['run']['load_state_path'].split('.')[0]}_{'noise' if config['add_noise'] else 'no-noise'}_li-{config['line_interrupt']}.mp4"
+    avg_line_recon_accuracy_meter = AverageMeter()
+    avg_recon_accuracy_meter, avg_recon_recall_meter, avg_recon_precision_meter = AverageMeter(), AverageMeter(), AverageMeter()
+    fp = f"../tmp/v2/{config['run']['load_state_path'].split('.')[0]}_{'noise:'+str(config['noise']) if config['noise'] > 0 else 'no-noise'}_li-{config['line_interrupt']}.mp4"
     if Path(fp).exists():
         Path(fp).unlink()
     out = cv2.VideoWriter(fp, cv2.VideoWriter_fourcc(*'mp4v'), config['fps'],
                           (ci.width, ci.height))
     for i, img in tqdm(enumerate(generator), total=config["n_samples"]):
-        inp, inp_features, l1_act, l1_act_prob, removed_noise = predict_sample(config, fabric, feature_extractor, lateral_network, img, i)
+        inp, inp_features, l1_act, l1_act_prob, removed_noise, interrupt_line_recon, recon_error = predict_sample(config, fabric, feature_extractor, lateral_network, img, i)
         l1_act_prob = torch.where((l1_act > 0.) | (inp_features > 0.), l1_act_prob, torch.zeros_like(l1_act_prob))
+        l1_acts.append(l1_act)
+        imgs_.append(inp)
         avg_noise_meter(removed_noise)
+        avg_line_recon_accuracy_meter(interrupt_line_recon)
+        avg_recon_accuracy_meter(recon_error[0])
+        avg_recon_recall_meter(recon_error[1])
+        avg_recon_precision_meter(recon_error[2])
+
         for timestep in range(l1_act.shape[0]):
             result = ci.create_image(inp[timestep], inp_features[timestep, 0], l1_act[timestep, 0], l1_act_prob[timestep, 0])
             out.write(cv2.cvtColor(result, cv2.COLOR_RGB2BGR))
     out.release()
+    if 'store_baseline_activations_path' in config and config['store_baseline_activations_path'] is not None:
+        torch.save([torch.stack(l1_acts), torch.stack(imgs_)], config['store_baseline_activations_path'])
     print("Video stored at", fp)
     print(f"Average Noise Reduction: {avg_noise_meter.mean}")
+    print(f"Average Interrupt Line Reconstruction Accuracy: {avg_line_recon_accuracy_meter.mean}")
+    print(f"Average Reconstruction Accuracy: {avg_recon_accuracy_meter.mean}")
+    print(f"Average Reconstruction Recall: {avg_recon_recall_meter.mean}")
+    print(f"Average Reconstruction Precision: {avg_recon_precision_meter.mean}")
+    return avg_noise_meter.mean, avg_line_recon_accuracy_meter.mean, avg_recon_accuracy_meter.mean, avg_recon_recall_meter.mean, avg_recon_precision_meter.mean
+
+
+def store_noise_results(noise_reduction: float, avg_line_recon_accuracy_meter:float, recon_accuracy: float, recon_recall: float, recon_precision: float, config: Dict[str, Any]):
+    """
+    Stores the noise reduction results in a csv file
+    :param noise_reduction: The noise reduction
+    :param recon_error: The reconstruction error
+    :param config: Configuration
+    """
+    fp = f"../tmp/noise_reduction.json"
+    with open(fp, "a") as f:
+        json.dump({'config': config, 'noise_reduction': noise_reduction, 'avg_line_recon_accuracy_meter':avg_line_recon_accuracy_meter, 'recon_accuracy': recon_accuracy, 'recon_recall': recon_recall, 'recon_precision': recon_precision}, f)
 
 
 def main():
@@ -418,10 +500,9 @@ def main():
     print_start("Starting python script 'main_evaluation.py'...",
                 title="Evaluating Model and Print activations")
     config, fabric, feature_extractor, lateral_network = load_models()
-    args = parse_args()
-    config = config | vars(args)
     generator = get_data_generator(config)
-    process_data(generator, config, fabric, feature_extractor, lateral_network)
+    noise_reduction, avg_line_recon_accuracy_meter, recon_accuracy, recon_recall, recon_precision = process_data(generator, config, fabric, feature_extractor, lateral_network)
+    store_noise_results(noise_reduction, avg_line_recon_accuracy_meter, recon_accuracy, recon_recall, recon_precision, config)
 
 if __name__ == "__main__":
     main()
