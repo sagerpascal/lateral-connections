@@ -7,7 +7,12 @@ do
   do
       for li in {0..7}
       do
-          python main_evaluation.py $config --load alternative_final.ckp --noise $noise --line_interrupt $li --load_baseline_activations_path ../tmp/alternative_final_baseline.pt;
+          if [ "$(awk 'BEGIN{print ('$noise' == 0.0)}')" -eq 1 ] && [ "$li" -eq 0 ];
+          then
+              python main_evaluation.py $config --load alternative_final.ckp --noise $noise --line_interrupt $li --store_baseline_activations_path ../tmp/$config.pt;
+              sleep 2;
+          fi
+          python main_evaluation.py $config --load alternative_final.ckp --noise $noise --line_interrupt $li --load_baseline_activations_path ../tmp/$config.pt;
       done
   done
 done

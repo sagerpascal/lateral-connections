@@ -502,7 +502,8 @@ def main():
     config, fabric, feature_extractor, lateral_network = load_models()
     generator = get_data_generator(config)
     noise_reduction, avg_line_recon_accuracy_meter, recon_accuracy, recon_recall, recon_precision = process_data(generator, config, fabric, feature_extractor, lateral_network)
-    store_noise_results(noise_reduction, avg_line_recon_accuracy_meter, recon_accuracy, recon_recall, recon_precision, config)
+    if 'store_baseline_activations_path' not in config or config['store_baseline_activations_path'] is None:
+        store_noise_results(noise_reduction, avg_line_recon_accuracy_meter, recon_accuracy, recon_recall, recon_precision, config)
 
 if __name__ == "__main__":
     main()
