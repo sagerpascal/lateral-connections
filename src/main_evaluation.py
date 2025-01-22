@@ -34,7 +34,7 @@ def parse_args(parser: Optional[argparse.ArgumentParser] = None) -> argparse.Arg
     parser.add_argument("--n_samples",
                         type=int,
                         metavar="N",
-                        default=180,
+                        default=60,
                         help="Number of samples to evaluate."
                         )
     parser.add_argument('--simplified',
@@ -358,9 +358,17 @@ def analyze_interrupt_line(img: Tensor, baseline_img: Tensor, lateral_features: 
     """
     baseline_img = baseline_img[-1].squeeze()
     mask = torch.where(img != baseline_img, True, False).unsqueeze(0).repeat(lateral_features[-1].shape[1], 1, 1)
-    baseline_lateral_features = baseline_lateral_features[-1].squeeze(0)[mask]
-    lateral_features = lateral_features[-1].squeeze(0)[mask]
-    accuracy = 1. - F.l1_loss(lateral_features, baseline_lateral_features)
+    baseline_lateral_features_masked = baseline_lateral_features[-1].squeeze(0)[mask]
+    lateral_features_masked = lateral_features[-1].squeeze(0)[mask]
+    mask_active = torch.where(baseline_lateral_features_masked > 0., True, False)
+    if baseline_lateral_features_masked[mask_active].numel() > 0:
+        accuracy = 1. - F.l1_loss(lateral_features_masked[mask_active], baseline_lateral_features_masked[mask_active])
+    else:
+        accuracy = torch.tensor(0.)
+    # mask = torch.where(img != baseline_img, True, False)
+    # baseline_lateral_features_masked = torch.clip(torch.sum(baseline_lateral_features[-1].squeeze(0), dim=0)[mask], max=1)
+    # lateral_features_masked = torch.clip(torch.sum(lateral_features[-1].squeeze(0), dim=0)[mask], max=1)
+    # accuracy = 1. - F.l1_loss(lateral_features_masked, baseline_lateral_features_masked)
     return accuracy.item()
 
 
@@ -439,7 +447,6 @@ def process_data(
     """
     Processes the data and store the network activations as video
     :param generator: Data generator
-    :param eval_args: Evaluation arguments
     :param config: Configuration
     :param fabric: Fabric instance
     :param feature_extractor: Feature extractor
@@ -450,7 +457,7 @@ def process_data(
     avg_noise_meter = AverageMeter()
     avg_line_recon_accuracy_meter = AverageMeter()
     avg_recon_accuracy_meter, avg_recon_recall_meter, avg_recon_precision_meter = AverageMeter(), AverageMeter(), AverageMeter()
-    fp = f"../tmp/v2/{config['run']['load_state_path'].split('.')[0]}_{'noise:'+str(config['noise']) if config['noise'] > 0 else 'no-noise'}_li-{config['line_interrupt']}.mp4"
+    fp = f"../tmp/v3/{config['config']}_{'noise:'+str(config['noise']) if config['noise'] > 0 else 'no-noise'}_li-{config['line_interrupt']}.mp4"
     if Path(fp).exists():
         Path(fp).unlink()
     out = cv2.VideoWriter(fp, cv2.VideoWriter_fourcc(*'mp4v'), config['fps'],
@@ -470,9 +477,39 @@ def process_data(
             result = ci.create_image(inp[timestep], inp_features[timestep, 0], l1_act[timestep, 0], l1_act_prob[timestep, 0])
             out.write(cv2.cvtColor(result, cv2.COLOR_RGB2BGR))
     out.release()
+    l1_acts = torch.stack(l1_acts)
     if 'store_baseline_activations_path' in config and config['store_baseline_activations_path'] is not None:
-        torch.save([torch.stack(l1_acts), torch.stack(imgs_)], config['store_baseline_activations_path'])
-    print("Video stored at", fp)
+        torch.save([l1_acts, torch.stack(imgs_)], config['store_baseline_activations_path'])
+    # print("Video stored at", fp)
+
+    calc_overlap = True
+    if calc_overlap:
+        # consider final timestep
+        l1_acts_f = l1_acts[:, -1].squeeze()
+
+        # calculate active / inactive cells
+        avg_activate_cells = torch.mean(torch.sum(l1_acts_f > 0, dim=(1, 2, 3)).float())
+        avg_inactivate_cells = torch.mean(torch.sum(l1_acts_f == 0, dim=(1, 2, 3)).float())
+        print(f"Average activated cells in net fragments: {avg_activate_cells}")
+        print(f"Average inactivated cells in net fragments: {avg_inactivate_cells}")
+
+        # calculate overlap
+        l1_acts_f = l1_acts_f.view(l1_acts_f.shape[0], -1)
+        overlaps, boverlaps = [], []
+        for v in range(l1_acts_f.shape[0]):
+            biggest_overlap = 0
+            for v2 in range(l1_acts_f.shape[0]):
+                if v != v2:
+                    overlap = torch.sum(l1_acts_f[v] * l1_acts_f[v2]) / torch.sum(l1_acts_f[v] + l1_acts_f[v2])
+                    overlaps.append(overlap)
+                    if overlap > biggest_overlap:
+                        biggest_overlap = overlap
+            boverlaps.append(biggest_overlap)
+
+        overlaps = torch.tensor(overlaps)
+        print(f"Average overlap: {torch.mean(overlaps)}")
+        print(f"Average biggest overlap: {torch.mean(torch.tensor(boverlaps))}")
+
     print(f"Average Noise Reduction: {avg_noise_meter.mean}")
     print(f"Average Interrupt Line Reconstruction Accuracy: {avg_line_recon_accuracy_meter.mean}")
     print(f"Average Reconstruction Accuracy: {avg_recon_accuracy_meter.mean}")

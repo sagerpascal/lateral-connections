@@ -4,7 +4,8 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 
-JSON_FP = Path(".").absolute().parent / "tmp" / "experiment_results.json"
+JSON_FP = Path(".").absolute().parent / "tmp" / "experiment_results_li.json"
+# JSON_FP = Path(".").absolute().parent / "tmp" / "experiment_results.json"
 
 
 def replace_square_list(sl):
@@ -27,10 +28,11 @@ def get_data():
             result = {
                 'noise': data['config']['noise'],
                 'line_interrupt': data['config']['line_interrupt'],
-                'act_threshold': data['config']['lateral_model']['l1_params']['act_threshold'],
+                'act_bias': round(data['config']['lateral_model']['l1_params']['act_threshold']-0.5, 2),
                 'square_factor': replace_square_list(data['config']['lateral_model']['l1_params']['square_factor']),
                 'noise_reduction': data['noise_reduction'],
                 'avg_line_recon_accuracy_meter': data['avg_line_recon_accuracy_meter'],
+                'avg_line_recon_accuracy_meter_2': (data['avg_line_recon_accuracy_meter']-0.75)/0.25,
                 'recon_accuracy': data['recon_accuracy'],
                 'recon_recall': data['recon_recall'],
                 'recon_precision': data['recon_precision'],
@@ -46,11 +48,12 @@ def feature_noise_to_location_noise(feature_noise, round_=False):
         result = np.round(result, 2)
     return result
 
-def plot_line(data, x_key, x_label, y_key, y_label, z_key, z_label, plot_key, plot_label, x2_func=None, x2_label=None):
+def plot_line(data, x_key, x_label, y_key, y_label, z_key, z_label, plot_key, plot_label, ymin=None,
+              x2_func=None, x2_label=None):
 
-    fig, axs = plt.subplots(ncols=len(data[plot_key].unique()), figsize=(18, 6), dpi=100)
+    fig, axs = plt.subplots(ncols=len(data[plot_key].unique()), figsize=(13, 3), dpi=100)
 
-    for ax, pk in zip(axs, data[plot_key].unique()):
+    for ax, pk in zip(axs, sorted(data[plot_key].unique())):
         data_ = data[data[plot_key] == pk]
 
         z_values = list(data_[z_key].unique())
@@ -58,11 +61,14 @@ def plot_line(data, x_key, x_label, y_key, y_label, z_key, z_label, plot_key, pl
 
         for zv in z_values:
             z = data_[data_[z_key] == zv]
-            ax.plot(z[x_key].values, z[y_key].values, label="{} = {}".format(z_label, zv))
+            ax.plot(z[x_key].values, z[y_key].values, label="{}{}".format(z_label, zv))
 
-        ax.set_title("{} = {}".format(plot_label, pk))
+        ax.set_title("{}{}".format(plot_label, pk))
         ax.set_xlabel(x_label)
         ax.set_ylabel(y_label)
+
+        if ymin is not None:
+            ax.set_ylim(ymax=1.0+0.02, ymin=ymin-0.02)
 
         if x2_func is not None:
             ax2 = ax.twiny()
@@ -74,6 +80,7 @@ def plot_line(data, x_key, x_label, y_key, y_label, z_key, z_label, plot_key, pl
         ax.legend()
         ax.grid()
 
+    plt.tight_layout()
     plt.show()
 
 
@@ -85,26 +92,31 @@ def plot(data):
     # plot noise only
     data_1 = data[data['line_interrupt'] == 0]
     plot_line(data_1, x_key="noise", x_label="Feature Noise", y_key="noise_reduction", y_label="Noise Reduction Rate",
-              z_key='act_threshold', z_label='Act. Threshold', plot_key='square_factor', plot_label='Square Factor',
-              x2_func=feature_noise_to_location_noise, x2_label="Spatial Noise")
+              z_key='act_bias', z_label='Act. Bias b = ', plot_key='square_factor', plot_label='Power Factor γ = ',
+              ymin=0.4, x2_func=feature_noise_to_location_noise, x2_label="Spatial Noise")
 
     plot_line(data_1, x_key="noise", x_label="Feature Noise", y_key="recon_recall", y_label="Recall",
-              z_key='act_threshold', z_label='Act. Threshold', plot_key='square_factor', plot_label='Square Factor',
-              x2_func=feature_noise_to_location_noise, x2_label="Spatial Noise")
+              z_key='act_bias', z_label='Act. Bias b = ', plot_key='square_factor', plot_label='Power Factor γ = ',
+              ymin=0.2, x2_func=feature_noise_to_location_noise, x2_label="Spatial Noise")
 
     plot_line(data_1, x_key="noise", x_label="Feature Noise", y_key="recon_precision", y_label="Precision",
-               z_key='act_threshold', z_label='Act. Threshold', plot_key='square_factor', plot_label='Square Factor',
-              x2_func=feature_noise_to_location_noise, x2_label="Spatial Noise")
+               z_key='act_bias', z_label='Act. Bias b = ', plot_key='square_factor', plot_label='Power Factor γ = ',
+              ymin=0.1, x2_func=feature_noise_to_location_noise, x2_label="Spatial Noise")
 
     # plot line interrupt only
     data_1 = data[data['noise'] == 0.0]
     plot_line(data_1, x_key="line_interrupt", x_label="Line Interrupt", y_key="avg_line_recon_accuracy_meter",
-              y_label="Feature Reconstruction Rate",
-              z_key='act_threshold', z_label='Act. Threshold', plot_key='square_factor', plot_label='Square Factor')
+              y_label="Feature Reconstruction Rate", z_key='act_bias', z_label='Act. Bias b = ',
+              plot_key='square_factor', plot_label='Power Factor γ = ', ymin=0.0)
+    # plot_line(data_1, x_key="line_interrupt", x_label="Line Interrupt", y_key="avg_line_recon_accuracy_meter_2",
+    #           y_label="Feature Reconstruction Rate 2", z_key='act_bias', z_label='Act. Bias b = ',
+    #           plot_key='square_factor', plot_label='Power Factor γ = ', ymin=0.0)
     plot_line(data_1, x_key="line_interrupt", x_label="Line Interrupt", y_key="recon_recall", y_label="Recall",
-              z_key='act_threshold', z_label='Act. Threshold', plot_key='square_factor', plot_label='Square Factor')
+              z_key='act_bias', z_label='Act. Bias b = ', plot_key='square_factor', plot_label='Power Factor γ = ',
+              ymin=0.5)
     plot_line(data_1, x_key="line_interrupt", x_label="Line Interrupt", y_key="recon_precision", y_label="Precision",
-              z_key='act_threshold', z_label='Act. Threshold', plot_key='square_factor', plot_label='Square Factor')
+              z_key='act_bias', z_label='Act. Bias b = ', plot_key='square_factor', plot_label='Power Factor γ = ',
+              ymin=0.6)
 
 
 if __name__ == '__main__':

@@ -10,3 +10,4 @@ sphinx~=7.0.1
 sphinx-press-theme~=0.8.0
 sphinxcontrib-video~=0.1.1
 deepdiff~=6.3.0
+opencv-python~=4.8.1.78

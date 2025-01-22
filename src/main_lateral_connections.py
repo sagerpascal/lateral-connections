@@ -3,9 +3,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import lightning.pytorch as pl
-import numpy as np
 import torch
-import torch.nn.functional as F
 import wandb
 from lightning import Fabric
 from torch import Tensor
@@ -16,8 +14,8 @@ from tqdm import tqdm
 
 from data import loaders_from_config
 from lateral_connections.feature_extractor.straight_line_pl_modules import FixedFilterFeatureExtractor
-from lateral_connections.s2_rbm import L2RBM
 from lateral_connections.s1_lateral_connections import LateralNetwork
+from lateral_connections.s2_rbm import L2RBM
 from tools import loggers_from_conf
 from tools.store_load_run import load_run, save_run
 from utils import get_config, print_start, print_warn
@@ -216,7 +214,7 @@ def cycle(
             z_float, z = lateral_network(x_in)
 
             # z2, z2_feedback, h, loss = l2.eval_step(z)
-#
+            #
             # if epoch > 10:
             #     mask_active = (z > 0) | (z2_feedback > 0)
             #     if F.mse_loss(z[mask_active], z2_feedback[mask_active]) < .1:
@@ -263,7 +261,7 @@ def cycle(
 
     if store_tensors:
         return features, torch.stack(input_features, dim=1), torch.stack(lateral_features, dim=1), torch.stack(
-            lateral_features_f, dim=1),None, None
+            lateral_features_f, dim=1), None, None
 
 
 def single_train_epoch(
@@ -349,10 +347,10 @@ def single_eval_epoch(
 
     assert not wandb_b or wandb_b and store_plots, "Wandb logging requires storing the plots."
 
-    if False:
+    if plot:
         if epoch == 0:
             feature_extractor.plot_model_weights(show_plot=plot)
-#
+        #
         plots_fp = lateral_network.plot_samples(plt_img,
                                                 plt_features,
                                                 plt_input_features,
